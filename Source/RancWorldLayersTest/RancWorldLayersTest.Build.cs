@@ -30,7 +30,6 @@ public class RancWorldLayersTest : ModuleRules
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]
 			{
-				"AssetRegistry"
 			}
 			);
 	}

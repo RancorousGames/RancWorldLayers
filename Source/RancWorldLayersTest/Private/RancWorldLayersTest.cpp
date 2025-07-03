@@ -102,4 +102,6 @@ bool FRancWorldLayersTest::RunTest(const FString& Parameters)
 	return bResult;
 }
 
-#endif // WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
+#endif // WITH_DEV_AUTOMATION_TESTS
+
+IMPLEMENT_MODULE(FDefaultModuleImpl, RancWorldLayersTest);
