@@ -4,7 +4,8 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/WorldSettings.h"
-#include "RancWorldLayers/Public/UMyWorldDataSubsystem.h"
+#include "RancWorldLayers/Public/MyWorldDataSubsystem.h"
+#include "RancWorldLayers/Public/WorldDataLayerAsset.h"
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
@@ -16,6 +17,7 @@ public:
 	{
 		World = CreateTestWorld(TestName);
 		Subsystem = EnsureSubsystem(World, TestName);
+		RegisterTestLayer();
 	}
 
 	~FRancWorldLayersTestFixture()
@@ -31,6 +33,19 @@ public:
 	UMyWorldDataSubsystem* GetSubsystem() const { return Subsystem; }
 
 private:
+	void RegisterTestLayer()
+	{
+		if (!Subsystem) return;
+
+		UWorldDataLayerAsset* TestLayerAsset = NewObject<UWorldDataLayerAsset>();
+		TestLayerAsset->LayerName = FName("TestLayer");
+		TestLayerAsset->Resolution = FIntPoint(100, 100);
+		TestLayerAsset->DataFormat = EDataFormat::R8;
+		TestLayerAsset->DefaultValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+		Subsystem->RegisterDataLayer(TestLayerAsset);
+	}
+	
 	static UWorld* CreateTestWorld(const FName& WorldName)
 	{
 		UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false, WorldName);

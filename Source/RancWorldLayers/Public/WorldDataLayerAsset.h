@@ -1,7 +1,6 @@
 #pragma once
 
-#include "Engine/DataAsset.h"
-#include "UWorldDataLayerAsset.generated.h"
+#include "WorldDataLayerAsset.generated.h"
 
 UENUM()
 enum class EResolutionMode : uint8
@@ -45,4 +44,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
 	FLinearColor DefaultValue;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Editor & Debugging")
+	bool bAllowPNG_IO;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Editor & Debugging")
+	TArray<FString> ChannelSemantics;
+
+	/*UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Editor & Debugging")
+	FWorldDataLayerDebugVisualization DebugVisualization;*/
 };

@@ -1,9 +1,8 @@
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-class FRancWorldLayersEditorModule : public IModuleInterface
+class FRancWorldLayersTestModule : public IModuleInterface
 {
 public:
 

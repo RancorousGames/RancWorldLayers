@@ -2,8 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
-#include "UWorldDataLayerAsset.h"
-#include "UWorldDataLayer.generated.h"
+#include "WorldDataLayerAsset.h"
+#include "WorldDataLayer.generated.h"
 
 UCLASS()
 class RANCWORLDLAYERS_API UWorldDataLayer : public UObject

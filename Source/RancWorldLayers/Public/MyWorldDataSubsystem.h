@@ -2,8 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
-#include "UWorldDataLayer.h"
-#include "UMyWorldDataSubsystem.generated.h"
+#include "WorldDataLayer.h"
+#include "MyWorldDataSubsystem.generated.h"
+
+class UWorldDataLayerAsset;
 
 UCLASS()
 class RANCWORLDLAYERS_API UMyWorldDataSubsystem : public UGameInstanceSubsystem
@@ -12,7 +14,10 @@ class RANCWORLDLAYERS_API UMyWorldDataSubsystem : public UGameInstanceSubsystem
 
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	
 	virtual void Deinitialize() override;
+
+	static UMyWorldDataSubsystem* Get(UObject* WorldContext);
 
 	// Generic Query Methods - The Core API
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
@@ -24,6 +29,15 @@ public:
 	// Generic Data Modification (CPU)
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
 	void SetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, const FLinearColor& NewValue);
+
+	void RegisterDataLayer(UWorldDataLayerAsset* LayerAsset);
+
+	// Editor Utility and Debugging
+	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
+	UTexture2D* GetDebugTextureForLayer(FName LayerName);
+
+	void ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
+	void ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
 
 private:
 	UPROPERTY()

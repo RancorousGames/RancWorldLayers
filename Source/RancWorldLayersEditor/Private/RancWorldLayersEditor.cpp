@@ -1,16 +1,18 @@
 #include "RancWorldLayersEditor.h"
+#include "WorldDataLayerAssetActions.h"
+#include "AssetToolsModule.h"
 
 #define LOCTEXT_NAMESPACE "FRancWorldLayersEditorModule"
 
 void FRancWorldLayersEditorModule::StartupModule()
 {
-	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+	// Register asset actions
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	AssetTools.RegisterAssetTypeActions(MakeShareable(new FWorldDataLayerAssetActions(EAssetTypeCategories::Misc)));
 }
 
 void FRancWorldLayersEditorModule::ShutdownModule()
 {
-	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
-	// we call this function before unloading the module.
 }
 
 #undef LOCTEXT_NAMESPACE

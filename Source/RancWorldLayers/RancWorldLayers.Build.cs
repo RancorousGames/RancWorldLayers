@@ -22,7 +22,10 @@ public class RancWorldLayers : ModuleRules
 			new string[]
 			{
 				"Core",
+				"CoreUObject",
+				"Engine",
 				"AssetRegistry",
+				"ImageWrapper",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -30,8 +33,6 @@ public class RancWorldLayers : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"CoreUObject",
-				"Engine",
 				"Slate",
 				"SlateCore",
 				// ... add private dependencies that you statically link with here ...	

@@ -4,33 +4,21 @@ public class RancWorldLayersTest : ModuleRules
 {
 	public RancWorldLayersTest(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		CppStandard = CppStandardVersion.Cpp20;
 		
-		PublicDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"Core",
-				"CoreUObject",
-				"Engine",
-				"RancWorldLayers", // Our main plugin module
-				"UnrealEd", // For editor-specific testing utilities
-				"Projects" // For IPluginManager
-			}
-			);
-		
-		PrivateDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"CoreUObject",
-				"Engine"
-			}
-			);
-		
-		// Add any modules that your module dynamically loads here
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-			}
-			);
+		PublicDependencyModuleNames.AddRange(new[]
+		{
+			"Core"
+		});
+
+		PrivateDependencyModuleNames.AddRange(new[]
+		{
+			"RancWorldLayers",
+			"CoreUObject",
+			"UnrealEd",
+			"AssetTools",
+			"Engine"
+		});
 	}
 }
