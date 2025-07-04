@@ -26,6 +26,7 @@ public class RancWorldLayers : ModuleRules
 				"Engine",
 				"AssetRegistry",
 				"ImageWrapper",
+				"Niagara",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);

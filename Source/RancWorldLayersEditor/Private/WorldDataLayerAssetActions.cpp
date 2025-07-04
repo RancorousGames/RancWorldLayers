@@ -3,7 +3,7 @@
 #include "DesktopPlatformModule.h"
 #include "ImageUtils.h"
 #include "EditorFramework/AssetImportData.h"
-#include "MyWorldDataSubsystem.h" // Include for UMyWorldDataSubsystem
+#include "WorldLayersSubsystem.h" // Include for UMyWorldDataSubsystem
 #include "Engine/Texture2D.h"
 #include "Misc/MessageDialog.h"
 
@@ -80,7 +80,7 @@ void FWorldDataLayerAssetActions::ExecuteExportToPNG(TArray<TWeakObjectPtr<UWorl
 
 				if (bSaved && SaveFilenames.Num() > 0)
 				{
-					UMyWorldDataSubsystem* Subsystem = UMyWorldDataSubsystem::Get(Objects[0].Get());
+					UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(Objects[0].Get());
 					if (Subsystem)
 					{
 						Subsystem->ExportLayerToPNG(LayerAsset, SaveFilenames[0]);
@@ -114,7 +114,7 @@ void FWorldDataLayerAssetActions::ExecuteImportFromPNG(TArray<TWeakObjectPtr<UWo
 
 				if (bOpened && OpenFilenames.Num() > 0)
 				{
-					UMyWorldDataSubsystem* Subsystem = UMyWorldDataSubsystem::Get(Objects[0].Get());
+					UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(Objects[0].Get());
 					if (Subsystem)
 					{
 						Subsystem->ImportLayerFromPNG(LayerAsset, OpenFilenames[0]);

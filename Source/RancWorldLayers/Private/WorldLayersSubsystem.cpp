@@ -1,10 +1,10 @@
-#include "MyWorldDataSubsystem.h"
+#include "WorldLayersSubsystem.h"
 
 #include "ImageUtils.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "WorldDataLayerAsset.h"
 
-void UMyWorldDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
@@ -20,7 +20,7 @@ void UMyWorldDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 }
 
-UMyWorldDataSubsystem* UMyWorldDataSubsystem::Get(UObject* WorldContext)
+UWorldLayersSubsystem* UWorldLayersSubsystem::Get(UObject* WorldContext)
 {
 	if (!WorldContext)
 	{
@@ -38,7 +38,7 @@ UMyWorldDataSubsystem* UMyWorldDataSubsystem::Get(UObject* WorldContext)
 	}
 
 	// Get the subsystem; if it doesn't exist, Unreal Engine will handle the creation automatically
-	UMyWorldDataSubsystem* Subsystem = GameInstance->GetSubsystem<UMyWorldDataSubsystem>();
+	UWorldLayersSubsystem* Subsystem = GameInstance->GetSubsystem<UWorldLayersSubsystem>();
 
 	if (!Subsystem)
 	{
@@ -48,13 +48,13 @@ UMyWorldDataSubsystem* UMyWorldDataSubsystem::Get(UObject* WorldContext)
 	return Subsystem;
 }
 
-void UMyWorldDataSubsystem::Deinitialize()
+void UWorldLayersSubsystem::Deinitialize()
 {
 	WorldDataLayers.Empty();
 	Super::Deinitialize();
 }
 
-bool UMyWorldDataSubsystem::GetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const
+bool UWorldLayersSubsystem::GetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const
 {
 	const UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName);
 	if (DataLayer)
@@ -63,10 +63,11 @@ bool UMyWorldDataSubsystem::GetValueAtLocation(FName LayerName, const FVector2D&
 		OutValue = DataLayer->GetValueAtPixel(PixelCoords);
 		return true;
 	}
+	OutValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f); // Initialize OutValue to (0,0,0,0) if layer not found
 	return false;
 }
 
-float UMyWorldDataSubsystem::GetFloatValueAtLocation(FName LayerName, const FVector2D& WorldLocation) const
+float UWorldLayersSubsystem::GetFloatValueAtLocation(FName LayerName, const FVector2D& WorldLocation) const
 {
 	FLinearColor Value;
 	if (GetValueAtLocation(LayerName, WorldLocation, Value))
@@ -76,7 +77,7 @@ float UMyWorldDataSubsystem::GetFloatValueAtLocation(FName LayerName, const FVec
 	return 0.0f;
 }
 
-void UMyWorldDataSubsystem::SetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, const FLinearColor& NewValue)
+void UWorldLayersSubsystem::SetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, const FLinearColor& NewValue)
 {
 	UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName);
 	if (DataLayer)
@@ -86,7 +87,7 @@ void UMyWorldDataSubsystem::SetValueAtLocation(FName LayerName, const FVector2D&
 	}
 }
 
-void UMyWorldDataSubsystem::RegisterDataLayer(UWorldDataLayerAsset* LayerAsset)
+void UWorldLayersSubsystem::RegisterDataLayer(UWorldDataLayerAsset* LayerAsset)
 {
 	if (LayerAsset)
 	{
@@ -98,7 +99,7 @@ void UMyWorldDataSubsystem::RegisterDataLayer(UWorldDataLayerAsset* LayerAsset)
 
 #include "WorldDataLayer.h"
 
-UTexture2D* UMyWorldDataSubsystem::GetDebugTextureForLayer(FName LayerName)
+UTexture2D* UWorldLayersSubsystem::GetDebugTextureForLayer(FName LayerName)
 {
 	UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName);
 	if (!DataLayer)
@@ -138,7 +139,7 @@ UTexture2D* UMyWorldDataSubsystem::GetDebugTextureForLayer(FName LayerName)
 	return DebugTexture;
 }
 
-void UMyWorldDataSubsystem::ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath)
+void UWorldLayersSubsystem::ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath)
 {
 	// It's good practice to check for a valid LayerAsset first
 	if (!LayerAsset)
@@ -186,7 +187,7 @@ void UMyWorldDataSubsystem::ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, c
 	}
 }
 
-void UMyWorldDataSubsystem::ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath)
+void UWorldLayersSubsystem::ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath)
 {
 	UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerAsset->LayerName);
 	if (DataLayer)
@@ -212,7 +213,7 @@ void UMyWorldDataSubsystem::ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset,
 	}
 }
 
-FIntPoint UMyWorldDataSubsystem::WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* DataLayer) const
+FIntPoint UWorldLayersSubsystem::WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* DataLayer) const
 {
 	// Placeholder for world bounds. This should ideally come from a global game setting or world properties.
 	const FVector2D WorldBounds = FVector2D(102400.0f, 102400.0f); // Assuming 1024m x 1024m world

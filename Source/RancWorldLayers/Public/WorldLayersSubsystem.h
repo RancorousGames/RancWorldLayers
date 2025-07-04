@@ -3,12 +3,12 @@
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "WorldDataLayer.h"
-#include "MyWorldDataSubsystem.generated.h"
+#include "WorldLayersSubsystem.generated.h"
 
 class UWorldDataLayerAsset;
 
 UCLASS()
-class RANCWORLDLAYERS_API UMyWorldDataSubsystem : public UGameInstanceSubsystem
+class RANCWORLDLAYERS_API UWorldLayersSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 
@@ -17,7 +17,7 @@ public:
 	
 	virtual void Deinitialize() override;
 
-	static UMyWorldDataSubsystem* Get(UObject* WorldContext);
+	static UWorldLayersSubsystem* Get(UObject* WorldContext);
 
 	// Generic Query Methods - The Core API
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")

@@ -18,7 +18,8 @@ public class RancWorldLayersTest : ModuleRules
 			"CoreUObject",
 			"UnrealEd",
 			"AssetTools",
-			"Engine"
+			"Engine",
+			"ImageWrapper"
 		});
 	}
 }

@@ -1,20 +1,21 @@
 // Copyright Rancorous Games, 2025
 
 #include "RancWorldLayersTestSetup.cpp"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Framework/DebugTestResult.h"
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
-#define TestName "GameTests.RancWorldLayers.1_CoreDataFramework"
+#define TestName "GameTests.RancWorldLayers.Core"
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRancWorldLayersTest, TestName,
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRancWorldLayersCoreTest, TestName,
 								 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 // Context class for setting up the test environment
-class WorldDataLayersTestContext
+class WorldDataLayersCoreTestContext
 {
 public:
-	WorldDataLayersTestContext(FRancWorldLayersTest* InTest)
+	WorldDataLayersCoreTestContext(FRancWorldLayersCoreTest* InTest)
 		: Test(InTest),
 		  TestFixture(FName(*FString(TestName)))
 	{
@@ -22,22 +23,22 @@ public:
 		Test->TestNotNull("Subsystem should not be null", Subsystem);
 	}
 
-	UMyWorldDataSubsystem* GetSubsystem() const { return Subsystem; }
+	UWorldLayersSubsystem* GetSubsystem() const { return Subsystem; }
 	UWorld* GetWorld() const { return TestFixture.GetWorld(); }
 
 private:
-	FRancWorldLayersTest* Test;
+	FRancWorldLayersCoreTest* Test;
 	FRancWorldLayersTestFixture TestFixture;
-	UMyWorldDataSubsystem* Subsystem;
+	UWorldLayersSubsystem* Subsystem;
 };
 
 // Class containing individual test scenarios
-class FWorldDataLayersTestScenarios
+class FWorldDataLayersCoreTestScenarios
 {
 public:
-	FRancWorldLayersTest* Test;
+	FRancWorldLayersCoreTest* Test;
 
-	FWorldDataLayersTestScenarios(FRancWorldLayersTest* InTest)
+	FWorldDataLayersCoreTestScenarios(FRancWorldLayersCoreTest* InTest)
 		: Test(InTest)
 	{
 	}
@@ -45,8 +46,8 @@ public:
 	bool TestDataLayerValueManipulation() const
 	{
 		FDebugTestResult Res = true;
-		WorldDataLayersTestContext Context(Test);
-		UMyWorldDataSubsystem* Subsystem = Context.GetSubsystem();
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
 
 		// IMPORTANT: This test assumes a UWorldDataLayerAsset named "TestLayer" exists in the Content Browser.
 		// It should have ResolutionMode = Absolute, Resolution = (100,100), DataFormat = R8, DefaultValue = (0,0,0,0)
@@ -84,15 +85,78 @@ public:
 
 		return Res;
 	}
+
+	bool TestNonExistentLayerQuery() const
+	{
+		FDebugTestResult Res = true;
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
+
+		FName NonExistentLayerName = FName("NonExistentLayer");
+		FVector2D TestLocation = FVector2D(10.0f, 10.0f);
+		FLinearColor OutValue;
+
+		bool bSuccess = Subsystem->GetValueAtLocation(NonExistentLayerName, TestLocation, OutValue);
+		Res &= Test->TestFalse("GetValueAtLocation should fail for non-existent layer", bSuccess);
+		Res &= Test->TestEqual("Value for non-existent layer should be default (0)", OutValue.R, 0.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Value for non-existent layer should be default (0)", OutValue.G, 0.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Value for non-existent layer should be default (0)", OutValue.B, 0.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Value for non-existent layer should be default (0)", OutValue.A, 0.0f, KINDA_SMALL_NUMBER);
+
+		return Res;
+	}
+
+	bool TestGetFloatValueAtLocationNonExistentLayer() const
+	{
+		FDebugTestResult Res = true;
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
+
+		FName NonExistentLayerName = FName("AnotherNonExistentLayer");
+		FVector2D TestLocation = FVector2D(20.0f, 20.0f);
+
+		float OutFloatValue = Subsystem->GetFloatValueAtLocation(NonExistentLayerName, TestLocation);
+		Res &= Test->TestEqual("Float value for non-existent layer should be 0.0f", OutFloatValue, 0.0f, KINDA_SMALL_NUMBER);
+
+		return Res;
+	}
+
+	bool TestSetValueAtLocationNonExistentLayer() const
+	{
+		FDebugTestResult Res = true;
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
+
+		FName NonExistentLayerName = FName("YetAnotherNonExistentLayer");
+		FVector2D TestLocation = FVector2D(30.0f, 30.0f);
+		FLinearColor TestValue = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f); // White
+
+		// Attempt to set a value on a non-existent layer. This should ideally do nothing and not crash.
+		Subsystem->SetValueAtLocation(NonExistentLayerName, TestLocation, TestValue);
+
+		// Verify that GetValueAtLocation still returns default for this non-existent layer
+		FLinearColor OutValue;
+		bool bSuccess = Subsystem->GetValueAtLocation(NonExistentLayerName, TestLocation, OutValue);
+		Res &= Test->TestFalse("GetValueAtLocation should still fail for non-existent layer after attempted set", bSuccess);
+		Res &= Test->TestEqual("Value for non-existent layer should remain default (0)", OutValue.R, 0.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Value for non-existent layer should remain default (0)", OutValue.G, 0.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Value for non-existent layer should remain default (0)", OutValue.B, 0.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Value for non-existent layer should remain default (0)", OutValue.A, 0.0f, KINDA_SMALL_NUMBER);
+
+		return Res;
+	}
 };
 
-bool FRancWorldLayersTest::RunTest(const FString& Parameters)
+bool FRancWorldLayersCoreTest::RunTest(const FString& Parameters)
 {
-	FWorldDataLayersTestScenarios Scenarios(this);
+	FWorldDataLayersCoreTestScenarios Scenarios(this);
 
 	bool bResult = true;
 
 	bResult &= Scenarios.TestDataLayerValueManipulation();
+	bResult &= Scenarios.TestNonExistentLayerQuery();
+	bResult &= Scenarios.TestGetFloatValueAtLocationNonExistentLayer();
+	bResult &= Scenarios.TestSetValueAtLocationNonExistentLayer();
 
 	return bResult;
 }

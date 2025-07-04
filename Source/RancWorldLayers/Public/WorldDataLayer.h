@@ -21,6 +21,9 @@ public:
 
 	bool bIsDirty;
 
+	UPROPERTY()
+	UTexture2D* GpuRepresentation;
+
 	void Initialize(UWorldDataLayerAsset* InConfig);
 	FLinearColor GetValueAtPixel(const FIntPoint& PixelCoords) const;
 	void SetValueAtPixel(const FIntPoint& PixelCoords, const FLinearColor& NewValue);
