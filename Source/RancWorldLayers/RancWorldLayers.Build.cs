@@ -27,6 +27,7 @@ public class RancWorldLayers : ModuleRules
 				"AssetRegistry",
 				"ImageWrapper",
 				"Niagara",
+				"UMG",
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -36,6 +37,8 @@ public class RancWorldLayers : ModuleRules
 			{
 				"Slate",
 				"SlateCore",
+				"RHI",
+				"RenderCore",
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);

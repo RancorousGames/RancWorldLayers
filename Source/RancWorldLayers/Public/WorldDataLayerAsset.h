@@ -35,7 +35,7 @@ struct FWorldDataLayerDebugVisualization
 	EWorldDataLayerVisualizationMode VisualizationMode;
 
 	UPROPERTY(EditAnywhere, Category = "Debug Visualization")
-	TSoftObjectPtr<UCurveLinearColorAtlas> ColorCurve;
+	TSoftObjectPtr<UCurveLinearColor> ColorCurve;
 };
 
 UENUM()
@@ -44,7 +44,7 @@ enum class EWorldDataLayerStructureType : uint8
 	Quadtree
 };
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FWorldDataLayerSpatialOptimization
 {
 	GENERATED_BODY()
@@ -118,6 +118,12 @@ public:
 	FVector2D CellSize;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
+	FVector2D WorldGridOrigin;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
+	FVector2D WorldGridSize;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
 	EDataFormat DataFormat;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
@@ -132,6 +138,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Editor & Debugging")
 	FWorldDataLayerDebugVisualization DebugVisualization;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Editor & Debugging", meta = (EditCondition = "DebugVisualization.VisualizationMode == EWorldDataLayerVisualizationMode::ColorRamp", EditConditionHides))
+	FVector2D DebugValueRange;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
 	FWorldDataLayerGPUConfiguration GPUConfiguration;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
+	FWorldDataLayerSpatialOptimization SpatialOptimization;
 };

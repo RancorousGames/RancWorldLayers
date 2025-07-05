@@ -1,189 +1,310 @@
-# RancWorldLayers
-2D grid layers for your world keeping track of things like heightmaps, biomes, navigation, custom fields
-
-Of course. Here is the fully updated documentation reflecting our discussion. It integrates the data-driven asset approach, details the extensive configuration options for each layer, and specifies the implementation challenges and solutions, resulting in a more robust and complete design specification.
+Of course. Here is the combined documentation, incorporating all details from V2.0, V3.0, and V5.0. Where concepts evolved or conflicted, the latest version's approach has been used, while ensuring no valuable details from earlier versions were lost.
 
 ***
 
-## Multi-Layered Semantic World Map Plugin for Unreal Engine (V2.0)
+# Multi-Layered Semantic World Map Plugin for Unreal Engine (Combined)
 
-### I. Introduction
+---
 
-In modern game development, especially for worlds leveraging procedural content generation (PCG), managing and querying environmental data efficiently at runtime is a paramount challenge. Traditional approaches often involve expensive raycasts, complex collision checks, or fragmented data sources, leading to performance bottlenecks, data inconsistencies, and difficult system integration.
+## 1. Introduction & Core Philosophy
 
-This document outlines the architecture for a **Multi-Layered Semantic World Map Plugin for Unreal Engine**. This plugin provides a unified, data-driven, multi-resolution 2D grid-based representation of your 3D world, serving as a central source of truth for all gameplay systems. By moving the definition of world data into configurable **Data Assets**, this system empowers designers to create, manage, and tailor any conceivable data layer—from terrain height and biome placement to dynamic threat maps and territorial influence—without writing a single line of code.
+### 1.1. The Problem: Data Chaos in Game Worlds
 
-The core idea is to abstract away 3D complexity into a collection of easily queryable 2D data layers, managed through a central subsystem. With robust support for varying resolutions, CPU-GPU synchronization, spatial query optimization, and a flexible data-driven workflow, this plugin streamlines world data management, enhances performance, and fosters deep, emergent integration between disparate game features.
+In modern game development, especially for worlds leveraging procedural content generation (PCG), managing and querying environmental data efficiently at runtime is a paramount challenge. AI needs to understand traversability and threat levels; PCG systems need to know elevation and biome types; gameplay mechanics need to know if an area is sacred, buildable, or resource-rich; and visual systems need to render all of this information cohesively.
 
-### II. Core Concepts & Architecture
+Traditionally, this leads to a chaotic and inefficient architecture:
+*   **Data Fragmentation:** Each system has its own "view" of the world, often acquiring data independently via expensive raycasts or complex collision checks. This leads to redundancy, performance bottlenecks, and data inconsistencies.
+*   **Inefficient Polling:** Actors constantly query the world state (`Am I on fire?`, `Is this water still here?`) every frame, wasting CPU cycles and leading to unresponsive-feeling logic.
+*   **Workflow Bottlenecks:** Designers and artists lack direct, intuitive tools to author and visualize complex gameplay data, slowing down iteration.
+*   **Poor Scalability:** Adding new types of world data requires significant engineering effort and changes across multiple systems.
 
-#### The Problem: Fragmented World Data
+### 1.2. The Solution: A Unified, Reactive Data Source
 
-Various game systems need different types of information about the world:
-*   **PCG:** Where to place forests, mountains, rivers? What's the elevation and slope?
-*   **AI:** Where is safe to walk? Where is drinkable water? What territory am I in? Where is the greatest threat?
-*   **Gameplay:** Can the player build here? Is this ground fertile? Is this area sacred?
-*   **Visuals:** How does corruption spread? Where should dynamic fog appear? Where are biome transitions?
+This plugin provides a single, authoritative, and highly performant source of truth for all semantic world data. It abstracts 3D complexity into a unified, data-driven, multi-resolution 2D grid-based representation of your 3D world, serving as a central source of truth for all gameplay systems.
 
-Often, each system acquires this data independently. This leads to redundancy, performance issues from expensive 3D queries, inconsistency between systems, and significant integration challenges.
+This architecture is built on three core philosophical pillars:
 
-#### Solution Overview: The Data-Driven Layered Grid
+1.  **Data-Driven Design:** The existence, properties, and data of every layer are defined by assets in the Content Browser, not by C++ code. This empowers designers and artists to create and manage layers without writing code.
+2.  **Editor-Runtime Duality:** A strict separation between heavyweight editor tools and lightweight runtime objects ensures a rich, interactive authoring experience without sacrificing performance in the final packaged game.
+3.  **Reactive Systems over Polling:** An advanced event-based data-binding API allows game systems to subscribe to changes in the world, leading to vastly more efficient and responsive gameplay logic.
 
-Our plugin tackles these issues by establishing a canonical, real-time updated **Multi-Resolution Layered Grid**. This system is driven entirely by **World Data Layer Assets**, a custom `UDataAsset` that allows designers to define every property of a given data layer. The central subsystem loads these assets at startup to create a collection of 2D grids, each representing a specific semantic property of the world.
+---
 
-**Key Principles:**
-*   **Data-Driven Design:** Layers are not defined in C++. They are defined as assets in the Content Browser, giving designers full control.
-*   **Centralized Access:** A single subsystem provides a unified API for all world semantic data queries.
-*   **Multi-Resolution:** Each layer asset defines its own resolution or cell size, optimizing memory and query speed.
-*   **Abstraction:** Game logic interacts with high-level queries (e.g., `GetValueAtLocation("Territory", ...)`) without needing to know the underlying data format, resolution, or storage.
-*   **Extensibility:** Adding a new data layer to the game is as simple as creating and configuring a new `UWorldDataLayerAsset`.
-*   **Performance-Aware:** Configuration includes options for GPU accessibility, asynchronous readback, and building optimized spatial query structures.
+## 2. System Architecture
 
-#### The Configuration Hub: UWorldDataLayerAsset
+### 2.1. The Duality Model: Editor vs. Runtime
 
-The cornerstone of this design is a new `UDataAsset` class, `UWorldDataLayerAsset`. Designers create these assets in the editor to define the existence and behavior of every data layer in the game.
+The plugin is composed of two parallel sets of classes that exist in different contexts. This separation is the most critical architectural concept.
 
-| Parameter | Data Type | Purpose & Details |
-| :--- | :--- | :--- |
-| **Core Identity** | | |
-| `LayerName` | `FName` | The primary, human-readable identifier used to query the layer. E.g., "Heightmap", "TerritorialInfluence". |
-| `LayerID` | `FGuid` | An automatically generated, unique, persistent ID to prevent issues if a designer renames the asset file. |
-| **Data Representation** | | |
-| `ResolutionMode` | `enum` | Defines how the final resolution is determined. Options: `Absolute` (e.g., 2048x2048) or `RelativeToWorld` (e.g., 1 pixel per meter). |
-| `Resolution` / `CellSize` | `FIntPoint` / `FVector2D` | The explicit resolution or world size of a single pixel, depending on the `ResolutionMode`. |
-| `DataFormat` | `enum` | **Crucial.** Specifies the memory layout of each pixel. E.g., `R8` (single 8-bit int), `R16F` (single 16-bit float), `RGBA8` (four 8-bit ints), `RGBA16F` (four 16-bit floats). This directly impacts memory usage and data range. |
-| `InterpolationMethod` | `enum` | How to return a value when queried between pixels. Options: `NearestNeighbor` (fast, blocky) or `Bilinear` (smoothly blends the 4 neighbors). |
-| `DefaultValue` | `FLinearColor` | The initial value for every pixel when the layer is created. `FLinearColor` can store four float values, making it versatile for any data format. |
-| **Mutability & Persistence** | | |
-| `Mutability` | `enum` | `Immutable` (read-only after generation), `InitialOnly` (writable during load, read-only at runtime), or `Continuous` (writable at any time). |
-| `bNeedsSaving` | `bool` | If true, this layer's data will be included in the game's save files. Essential for persistent data like territory, but can be disabled for transient data like threat maps. |
-| **Runtime Behavior & Optimization** | | |
-| `SpatialOptimization` | `struct` | Configures "Find Nearest" queries. Contains: `bool bBuildAccelerationStructure`, an `enum` for `StructureType` (e.g., `Quadtree`), and a `TArray<FLinearColor>` of `ValuesToTrack`. |
-| `GPUConfiguration` | `struct` | Configures all GPU interaction. Contains: `bool bKeepUpdatedOnGPU`, `bool bIsGPUWritable`, an `enum` for `ReadbackBehavior` (`None`, `OnDemand`, `Periodic`), a `float` for `PeriodicReadbackSeconds`, and a `TSoftObjectPtr<UNiagaraSystem>` for any associated GPU simulation. |
-| **Editor & Debugging** | | |
-| `bAllowPNG_IO` | `bool` | If true, enables editor utilities to export this layer to or import it from a `.PNG` file, allowing for an artist-driven workflow. |
-| `ChannelSemantics` | `TArray<FString>` | An array of 4 strings describing what each data channel (R, G, B, A) represents. Purely for editor tooltips and debugging. |
-| `DebugVisualization` | `struct` | Configures the debug overlay. Contains: an `enum` for `VisualizationMode` (`Grayscale`, `ColorRamp`), and a `TSoftObjectPtr<UCurveLinearColorAtlas>` to map data values to specific colors. |
+*   **Editor Context (Loaded only when `WITH_EDITOR` is true):**
+    *   **Purpose:** To provide a rich user experience for data authoring, visualization, and baking (e.g., from `ALandscape` actors). Performance is secondary to functionality and interactivity.
+    *   **Key Classes:** `UMyWorldDataEditorSubsystem`, `UWorldDataLayer_Editor` (a heavyweight object for live previews and data handling).
 
-#### Coordinate Abstraction and Conversion
+*   **Runtime Context (Exists in PIE and Packaged Games):**
+    *   **Purpose:** To provide lean, high-performance access to the world data for gameplay systems. It is optimized for speed, low memory overhead, and efficient querying.
+    *   **Key Classes:** `UWorldLayersSubsystem` (Game Instance Subsystem), `URuntimeWorldDataLayer` (a lightweight object holding only necessary gameplay data), `AWorldDataVolume`.
 
-A critical component is the ability to seamlessly convert between 3D world coordinates and the 2D pixel coordinates of any given layer. This allows systems to query based on their 3D position, and the plugin handles the resolution difference transparently based on the layer's configured `CellSize`.
+### 2.2. The On-Disk Data Pipeline: Native Unreal Assets
 
-#### Data Flow Overview
+The bridge between these two contexts is a set of native Unreal Engine assets (`.uasset`), ensuring seamless integration with source control, the Asset Registry, cooking, and packaging.
 
+1.  **Configuration Asset (`UWorldDataLayerAsset`):** A `UDataAsset` that defines *how* a layer behaves. This is the central configuration object for designers.
+2.  **Bulk Data Asset (`UWorldLayerBulkDataAsset`):** A custom `UObject`-based asset class whose sole purpose is to hold the large `TArray` of serialized pixel data for a single layer. When data is baked in the editor, it's saved to one of these assets. This makes the data fully visible to Unreal's reference tracking and build systems, replacing earlier, less robust methods like external `.bin` files.
+3.  **Artist-Authored Data (`UTexture2D`):** For layers sourced from artist-painted textures, the source `.uasset` texture file itself remains the on-disk data, which is then processed into a `BulkDataAsset` via an editor action.
 
+---
 
-### III. Plugin Structure & Implementation Details
+## 3. Core Components & Data Structures
 
-#### Core Classes
+### 3.1. AWorldDataVolume: The World Definition
 
-*   **`UMyWorldDataSubsystem` (Game Instance Subsystem)**
-    *   **Role:** The central manager and public API for the entire system.
-    *   **Responsibilities:**
-        *   On `Initialize`, discovers all `UWorldDataLayerAsset` assets in the project.
-        *   For each asset, creates a runtime `UWorldDataLayer` instance.
-        *   Manages the lifecycle of all runtime layer instances.
-        *   Provides the primary API for querying and updating world data (CPU-side).
-        *   In its `Tick` function, manages the update cycle for "dirty" layers, batching CPU-to-GPU data transfers.
-        *   Handles serialization by iterating over layers flagged with `bNeedsSaving`.
+This is the central anchor point placed in each level. It defines the spatial bounds and active layers for a specific map.
 
-*   **`UWorldDataLayer` (Abstract Base Class - Runtime Object)**
-    *   **Role:** The runtime instance of a single data layer. There is one `UWorldDataLayer` object for each `UWorldDataLayerAsset`.
-    *   **Properties:**
-        *   `TStrongObjectPtr<UWorldDataLayerAsset> Config`: A pointer to the asset that defines this layer's behavior.
-        *   `FIntPoint Resolution`: The final resolution of this layer.
-        *   `TArray<uint8> RawData`: The master CPU-side copy of the pixel data. The actual type (`TArray<FFloat16>`, `TArray<FColor>`) would be determined at initialization based on the asset's `DataFormat`.
-        *   `UTexture* GpuRepresentation`: A pointer to the `UTexture2D` or `UTextureRenderTarget2D` on the GPU, if `bKeepUpdatedOnGPU` is true.
-        *   `bool bIsDirty`: A flag set to true whenever `RawData` is modified. The subsystem checks this flag to perform batched GPU updates.
-        *   A pointer to its spatial acceleration structure (e.g., a Quadtree object), if configured.
+*   **Class:** `AWorldDataVolume` (inherits from `AVolume`)
+*   **Purpose:** To provide a single, visually editable source for global world data configuration. Designers place and scale this volume to encompass the playable map area.
+*   **Properties:**
+    *   `TArray<TSoftObjectPtr<UWorldDataLayerAsset>> LayerAssets;`
+        *   **Description:** The primary configuration array. The designer populates this list with all the layer assets that should be loaded for this level.
+    *   `EOutOfBoundsBehavior OutOfBoundsBehavior = EOutOfBoundsBehavior::ReturnDefaultValue;`
+        *   **Description:** An enum (`ReturnDefaultValue`, `ClampToEdge`) that globally defines how queries for locations outside the volume's bounds are handled.
+*   **Implicit Properties (Derived at Runtime):**
+    *   **WorldGridOrigin (`FVector2D`):** Calculated from `GetBounds().GetBox().Min`. This is the world coordinate that maps to pixel (0,0).
+    *   **WorldGridSize (`FVector2D`):** Calculated from `GetBounds().GetBox().GetSize()`. This is the total world-space size of the managed area.
+	
+	Of course. Here is a dense, to-the-point documentation block for just the coordinate conversion system.
 
-*   **`UWorldDataLayerAsset` (Data Asset)**
-    *   **Role:** The C++ class for the Data Asset described in the section above. It contains all the configurable properties that define a layer. It holds no runtime state.
+---
 
-#### The Update Cycle: Keeping Data Synchronized
+### \#\#\# Coordinate System: World & Grid Mapping
 
-To prevent performance issues from excessive GPU data transfers, a "dirty" system is essential.
-1.  A gameplay system calls `UMyWorldDataSubsystem::SetValueAtLocation(...)`.
-2.  The subsystem finds the correct `UWorldDataLayer` instance and modifies its `RawData` array.
-3.  The `UWorldDataLayer` instance sets its internal `bIsDirty` flag to `true`.
-4.  During its `Tick`, the `UMyWorldDataSubsystem` iterates through all layers.
-5.  If a layer `bIsDirty` and has a GPU representation, the subsystem queues a command on the render thread to update the corresponding GPU texture region from the `RawData`. This batches many updates into a single transfer.
-6.  After the update is sent, the `bIsDirty` flag is reset to `false`.
+All conversions between world-space and grid-space are handled internally by the `UWorldLayersSubsystem` to ensure precision and consistency. The system is anchored by the `AWorldDataVolume` actor placed in the level, whose bounds define the global mapping.
 
-### IV. Interfaces & API
+#### **(h4) Core Definitions**
 
-All public API is exposed through the `UMyWorldDataSubsystem` for clean, centralized access.
+*   **World Location (`FVector2D`):** Standard Unreal world coordinate (cm). The input for public API functions.
+*   **Grid Coordinate (`FIntPoint`):** The integer `(X, Y)` address of a cell in a layer's grid. `(0, 0)` is the bottom-left cell.
+*   **World Grid Origin (`FVector2D`):** The world-space coordinate corresponding to the bottom-left corner of the `(0, 0)` grid cell. Derived from `AWorldDataVolume`'s minimum bounds.
+*   **Layer Cell Size (`FVector2D`):** The world-space size of a single grid cell for a given layer.
 
-```cpp
-// UMyWorldDataSubsystem.h
+#### **(h4) World to Grid Conversion**
 
-UCLASS()
-class MYWORLDDATAPLUGIN_API UMyWorldDataSubsystem : public UGameInstanceSubsystem
-{
-    GENERATED_BODY()
+This is used for all queries and modifications. It translates a `WorldLocation` into a `GridCoordinate`.
 
-public:
-    // Generic Query Methods - The Core API
-    bool GetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const;
-    float GetFloatValueAtLocation(FName LayerName, const FVector2D& WorldLocation) const; // Convenience for single-channel float layers
-
-    // Generic Data Modification (CPU)
-    void SetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, const FLinearColor& NewValue);
-    
-    // Optimized Spatial Queries
-    bool FindNearestPointWithValue(FName LayerName, const FVector2D& SearchOrigin, float MaxSearchRadius, 
-                                   const FLinearColor& TargetValue, FVector2D& OutWorldLocation) const;
-
-    // GPU Texture Access (for Materials, Niagara, etc.)
-    UTexture* GetLayerGpuTexture(FName LayerName) const;
-
-    // Editor Utility and Debugging
-    UTexture2D* GetDebugTextureForLayer(FName LayerName);
-    void ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
-    void ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
-};
+**Formula:**
+```
+PixelX = floor((WorldLocation.X - WorldGridOrigin.X) / LayerCellSize.X)
+PixelY = floor((WorldLocation.Y - WorldGridOrigin.Y) / LayerCellSize.Y)
 ```
 
-### V. Key Features & Use Cases
+**Process:**
+1.  **Normalize:** The `WorldLocation` is made relative to the `WorldGridOrigin`. This correctly handles negative world coordinates.
+2.  **Scale:** The result is divided by the layer-specific `LayerCellSize` to convert from world units to grid units.
+3.  **Floor:** The `floor()` operation discards the fractional part, mapping any point within a cell's boundary to the same integer `GridCoordinate`.
 
-The power of this system comes from its flexibility. Here’s how you would configure assets for common use cases:
+#### **(h4) Grid to World Conversion**
+
+This is used internally to provide world-space results from grid-based searches. It translates a `GridCoordinate` to the `WorldLocation` at the **center** of that cell.
+
+**Formula:**
+```
+WorldLocation.X = ((PixelX + 0.5) * LayerCellSize.X) + WorldGridOrigin.X
+WorldLocation.Y = ((PixelY + 0.5) * LayerCellSize.Y) + WorldGridOrigin.Y
+```
+
+**Process:**
+1.  **Center:** `0.5` is added to the integer `GridCoordinate` to find the cell's center point.
+2.  **Scale:** The result is multiplied by the `LayerCellSize` to convert from grid units to world units.
+3.  **Translate:** The `WorldGridOrigin` is added back to shift the relative coordinate into its final world-space position.
+
+### 3.2. UWorldDataLayerAsset: The Layer Blueprint
+
+This `UDataAsset` is the "blueprint" for a single layer. It contains no runtime state, only configuration, giving designers complete control.
+
+| Parameter Group | Parameter | Data Type | Purpose & Details |
+| :--- | :--- | :--- | :--- |
+| **Identity** | `LayerName` | `FName` | The primary, human-readable identifier used to query the layer (e.g., "Heightmap", "TerritorialInfluence"). |
+| | `LayerID` | `FGuid` | An automatically generated, unique, persistent ID to prevent issues if a designer renames the asset file. |
+| **Data Format** | `DataFormat` | `enum` | **CRITICAL.** Enum defining the in-memory data type for each pixel. **Enum Values:** `UInt8`, `Int16`, `Int32`, `Float16` (half), `Float32` (float), `Vector4_8Bit` (equivalent to RGBA8). |
+| | `ResolutionMode` | `enum` | Defines how resolution is determined. `Absolute` (e.g., 2048x2048) or `RelativeToWorld` (e.g., 1 pixel per meter). |
+| | `Resolution` | `FIntPoint` | Used if `ResolutionMode` is `Absolute`. |
+| | `CellSize` | `FVector2D` | Used if `ResolutionMode` is `RelativeToWorld`. |
+| | `InterpolationMethod` | `enum` | How to return a value when queried between pixels. **Options:** `NearestNeighbor` (fast, blocky, good for ID maps) or `Bilinear` (smoothly blends 4 neighbors, good for continuous data). |
+| **Initialization** | `InitializationSource` | `enum` | How the layer is populated at load time. **Enum Values:** `FromDefaultValue`, `FromSourceTexture`, `FromBakedData`. |
+| | `SourceTexture` | `TSoftObjectPtr<UTexture2D>` | The texture to use if initializing `FromSourceTexture`. |
+| | `BakedData` | `TSoftObjectPtr<UWorldLayerBulkDataAsset>` | A soft pointer to the companion asset holding the bulk data. This is populated by editor tools when baking. |
+| | `DefaultValue` | `double` | The initial numeric value for every pixel. The system correctly casts this `double` to the target `DataFormat`. |
+| **Mutability & Persistence** | `Mutability` | `enum` | `Immutable` (read-only after generation), `InitialOnly` (writable during load, read-only at runtime), or `Continuous` (writable at any time). |
+| | `bNeedsSaving` | `bool` | If true, this layer's data will be included in the game's save files. Essential for persistent data like territory. |
+| **Runtime Optimization**| `SpatialOptimization` | `struct` | Configures "Find Nearest" queries. Contains: `bool bBuildAccelerationStructure`, an `enum` for `StructureType` (e.g., `Quadtree`), and a `TArray<FLinearColor>` of `ValuesToTrack`. |
+| | `GPUConfiguration` | `struct` | Configures GPU interaction. Contains: `bool bKeepUpdatedOnGPU`, `bool bIsGPUWritable`, an `enum` for `ReadbackBehavior` (`None`, `OnDemand`, `Periodic`), a `float` for `PeriodicReadbackSeconds`, and a `TSoftObjectPtr<UNiagaraSystem>` for any associated GPU simulation. |
+| **Editor & Debugging** | `bAllowPNG_IO` | `bool` | Enables editor utilities to export/import a visual representation of this layer to/from a `.png` file. |
+| | `DebugValueRange` | `FVector2D` | Defines the expected min/max range of the data (e.g., -1000 to 5000 for height). Used to map numeric values to a grayscale (0-1) range for debug textures and PNG exports. |
+| | `ChannelSemantics` | `TArray<FString>` | An array of up to 4 strings describing what each data channel represents (e.g., `["TribeID", "InfluenceStr", "LastUpdate", "Reserved"]`). Purely for editor tooltips. |
+| | `DebugVisualization` | `struct` | Configures the debug overlay. Contains: an `enum` for `VisualizationMode` (`Grayscale`, `ColorRamp`), and a `TSoftObjectPtr<UCurveLinearColorAtlas>` to map data values to specific colors. |
+
+### 3.3. URuntimeWorldDataLayer: The Live Layer Object
+
+This is the runtime instance of a single data layer, managed by the `UWorldLayersSubsystem`.
+
+*   **Properties:**
+    *   `TStrongObjectPtr<UWorldDataLayerAsset> Config`: A pointer to the asset that defines this layer's behavior.
+    *   `TArray<uint8> RawData`: The master CPU-side copy of the pixel data, cast to the correct type at initialization based on the asset's `DataFormat`.
+    *   `UTexture* GpuRepresentation`: A pointer to the `UTexture2D` or `UTextureRenderTarget2D` on the GPU, if `bKeepUpdatedOnGPU` is true.
+    *   `bool bIsDirty`: A flag set to true whenever `RawData` is modified. The subsystem checks this flag to perform batched CPU-to-GPU updates.
+    *   A pointer to its spatial acceleration structure (e.g., a Quadtree), if configured.
+
+---
+
+## 4. Data Authoring & Editing Workflows
+
+### 4.1. Editor-Time Authoring
+
+These methods are managed by the `UMyWorldDataEditorSubsystem` to provide a seamless, native-feeling authoring experience.
+
+1.  **Baking from `ALandscape`:**
+    *   **Workflow:** A designer uses an Editor Utility Widget, selects the `ALandscape` actor and a target `UWorldDataLayerAsset`, and clicks "Bake".
+    *   **Implementation:** The `EditorSubsystem` extracts the height data. It then programmatically creates a new `UWorldLayerBulkDataAsset`, serializes the height data into it, saves the new asset, and links it to the `BakedData` property on the source `UWorldDataLayerAsset`.
+
+2.  **Importing from Texture (`.png`, `.exr`):**
+    *   **Workflow:** An artist creates a high-precision map (e.g., 16-bit grayscale `.png`). In Unreal, they use a right-click utility on the target `UWorldDataLayerAsset` to "Import and Bake...".
+    *   **Implementation:** The utility reads the source texture, correctly handling color space conversion (sRGB to Linear) to ensure data integrity. It then performs the same process as above: creates a new `UWorldLayerBulkDataAsset`, serializes the data, and links the two assets.
+
+3.  **Direct In-Editor Painting:**
+    *   **Workflow:** A designer uses a custom "World Data Paint Tool" in the editor modes panel to directly modify layers in the 3D viewport.
+    *   **Implementation:** The paint tool interacts with the `EditorSubsystem`. On save, the subsystem saves the modified data into the linked `UWorldLayerBulkDataAsset`.
+
+### 4.2. Runtime Editing
+
+These actions are performed by the `UWorldLayersSubsystem` on the lightweight runtime layer objects.
+
+1.  **Point-Based Modification:**
+    *   **Workflow:** A "Frost" spell freezes the ground. The spell actor calls `UWorldLayersSubsystem::SetFloatValueAtLocation("Temperature", HitLocation, -10.0f);`.
+    *   **Implementation:** The subsystem's API includes strongly-typed setters. It writes the new value into the `RawData` buffer, sets the `bIsDirty` flag, and broadcasts any bound events.
+
+2.  **Procedural Bulk Modification:**
+    *   **Workflow:** A PCG system generates a `TArray<float>` for the heightmap. It calls `UWorldLayersSubsystem::SetLayerDataFromArray_Float("Height", TheNewData);`.
+    *   **Implementation:** A suite of `SetLayerDataFromArray_*` functions exists for each data type, ensuring type safety and performance for large-scale updates.
+
+---
+
+## 5. Interfaces & API (`UWorldLayersSubsystem`)
+
+### 5.1. Data Query & Modification
+
+```cpp
+// Strongly-typed getters for performance and type safety
+bool GetFloatValueAtLocation(FName LayerName, const FVector2D& WorldLocation, float& OutValue) const;
+bool GetIntValueAtLocation(FName LayerName, const FVector2D& WorldLocation, int32& OutValue) const;
+
+// Convenience getter for multi-channel data
+bool GetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const;
+
+// Strongly-typed setters
+void SetFloatValueAtLocation(FName LayerName, const FVector2D& WorldLocation, float NewValue);
+void SetIntValueAtLocation(FName LayerName, const FVector2D& WorldLocation, int32 NewValue);
+
+// Bulk data modification
+bool SetLayerDataFromArray_Float(FName LayerName, const TArray<float>& InData);
+```
+
+### 5.2. Optimized Spatial Queries
+
+Requires `SpatialOptimization` to be configured on the asset.
+
+```cpp
+/** Efficiently finds the nearest world location with a specific value. */
+bool FindNearestPointWithValue(FName LayerName, const FVector2D& SearchOrigin, float MaxSearchRadius, 
+                               const FLinearColor& TargetValue, FVector2D& OutWorldLocation) const;
+```
+
+### 5.3. Reactive Event System
+
+The event system uses a handle object, `UWorldDataSubscription`, to manage subscriptions cleanly.
+
+```cpp
+// Delegate signatures
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPixelValueChanged, FGenericDataUnion, NewValue); // FGenericDataUnion is a custom struct that can hold any of our supported data types.
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnRegionChanged);
+
+/**
+ * Creates a subscription to changes at a single pixel.
+ * @param Owner The object that owns this subscription, used for automatic cleanup.
+ * @return A subscription handle object. You must bind your function to the delegate on this object.
+ */
+UFUNCTION(BlueprintCallable, Category = "World Data|Events")
+UWorldDataSubscription* SubscribeToPixel(FName LayerName, const FVector2D& WorldCoordinate, UObject* Owner);
+
+/** Creates a subscription to changes within a square radius around a pixel. */
+UFUNCTION(BlueprintCallable, Category = "World Data|Events")
+UWorldDataSubscription* SubscribeToRegion(FName LayerName, const FVector2D& WorldCoordinate, int32 Radius, UObject* Owner);
+
+/** Updates the world coordinate that an existing subscription is tracking. Useful for moving actors. */
+UFUNCTION(BlueprintCallable, Category = "World Data|Events")
+void UpdateSubscriptionLocation(UWorldDataSubscription* Subscription, const FVector2D& NewWorldCoordinate);
+
+/** Manually destroys a subscription. Also called automatically if the owner is destroyed. */
+UFUNCTION(BlueprintCallable, Category = "World Data|Events")
+void Unsubscribe(UWorldDataSubscription* Subscription);
+```
+
+### 5.4. GPU & Debugging API
+
+```cpp
+/** Returns the GPU texture representation of a layer for use in Materials, Niagara, etc. */
+UTexture* GetLayerGpuTexture(FName LayerName) const;
+
+/** Generates a temporary texture for visualizing layer data in a debug HUD. */
+UTexture2D* GetDebugTextureForLayer(FName LayerName);
+
+// Editor Utility Functions
+void ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
+void ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
+```
+
+---
+
+## 6. Key Features & Example Use Cases
 
 *   **Terrain Heightmap:**
-    *   **Configuration:** Create a `UWorldDataLayerAsset` named "Height". Set `DataFormat` to `R16F` or `R32F`. `Mutability` is `Immutable`. `bAllowPNG_IO` is true. `bKeepUpdatedOnGPU` is true.
-    *   **Use:** PCG graphs query it for placement. It's imported from a World Machine export or an existing `ALandscape` actor. Materials sample its GPU texture for visual height blending.
+    *   **Configuration:** A "Height" asset. `DataFormat`: `R16F` or `R32F`. `Mutability`: `Immutable`. `InitializationSource`: `FromBakedData` after baking from `ALandscape`. `bKeepUpdatedOnGPU`: true.
+    *   **Use:** PCG graphs query it for placement. Materials sample its GPU texture for visual height blending.
 
 *   **Biome & Water Map:**
-    *   **Configuration:** Create a "Biomes" asset. `DataFormat` is `RGBA8` for packing data. `ChannelSemantics` are `["BiomeID", "WaterDepth", "TraversabilityCost", "CustomFlags"]`. `InterpolationMethod` is `NearestNeighbor` to prevent blending biome IDs. `bAllowPNG_IO` is true for artists to paint.
+    *   **Configuration:** A "Biomes" asset. `DataFormat`: `Vector4_8Bit`. `ChannelSemantics`: `["BiomeID", "WaterDepth", "Fertility", "TraversabilityCost"]`. `InterpolationMethod`: `NearestNeighbor` to prevent blending IDs. `InitializationSource`: `FromSourceTexture` using an artist-painted map.
     *   **Use:** AI queries "TraversabilityCost" for pathfinding. PCG spawns assets based on "BiomeID". The player character checks "WaterDepth".
 
 *   **Dynamic Spreading Corruption (GPU-Driven):**
-    *   **Configuration:** Create a "Corruption" asset. `DataFormat` is `R8`. `Mutability` is `Continuous`. In `GPUConfiguration`, set `bIsGPUWritable` to true, `ReadbackBehavior` to `Periodic` (e.g., every 0.5s), and link the controlling `UNiagaraSystem`.
-    *   **Use:** The linked Niagara system simulates the spread directly on a `UTextureRenderTarget2D`. Post-process materials sample this texture for visual effects. The periodic GPU-to-CPU readback updates the CPU `RawData`, allowing AI to react to the corruption's spread with a slight delay.
+    *   **Configuration:** A "Corruption" asset. `DataFormat`: `R8`. `Mutability`: `Continuous`. In `GPUConfiguration`, set `bIsGPUWritable` to true, `ReadbackBehavior` to `Periodic` (e.g., every 0.5s), and link the controlling `UNiagaraSystem`.
+    *   **Use:** The linked Niagara system simulates the spread directly on a `UTextureRenderTarget2D`. Post-process materials sample this texture for visual effects. The periodic GPU-to-CPU readback updates the CPU data, allowing AI to react to the corruption's spread via the event system.
 
 *   **Territorial Influence Map:**
-    *   **Configuration:** Create a "Territory" asset. `DataFormat` is `RGBA8` to store influence for up to four tribes. `Mutability` is `Continuous`. `bNeedsSaving` is true.
-    *   **Use:** AI units "paint" their influence into this layer. Other AI queries it to make strategic decisions. The data is saved and loaded with the game.
+    *   **Configuration:** A "Territory" asset. `DataFormat`: `Vector4_8Bit` to store influence for up to four factions. `Mutability`: `Continuous`. `bNeedsSaving`: true.
+    *   **Use:** AI units "paint" their influence into this layer. Other AI queries it to make strategic decisions. The data is saved and loaded with the game. A "Purifier" building could use `SubscribeToRegion` to be notified when enemy influence enters its perimeter.
 
-### VI. Development Workflow & Debugging
+---
 
-*   **Editor Workflow:** The primary workflow is creating and configuring `UWorldDataLayerAsset` files in the Content Browser. Right-clicking one of these assets would bring up editor utility actions like "Export to PNG..." or "Import from PNG...".
-*   **Runtime Debug Visualization:** An in-game debug overlay can be toggled. It will list all loaded layers. When a layer is selected for viewing, the subsystem reads its `DebugVisualization` configuration. It generates a temporary `UTexture2D` from the CPU data and applies the correct visualization (grayscale or a color ramp from the specified curve asset), displaying it on the HUD.
-*   **Performance Considerations:**
-    *   **Memory:** The `DataFormat` and `Resolution` properties on the asset give designers direct control over the memory footprint of each layer.
-    *   **CPU <-> GPU Sync:** The cost is managed via the `GPUConfiguration` on the asset. Most layers will be CPU->GPU only. Expensive GPU->CPU readbacks are only enabled for specific layers that require it, and their frequency is controlled.
-    *   **Query Speed:** For layers requiring frequent "Find Nearest" queries, setting up `SpatialOptimization` is critical. This trades higher memory usage (for the Quadtree) for drastically faster queries.
+## 7. Implementation Deep Dive & Known Challenges
 
-### VII. Implementation Deep Dive & Known Challenges
-
-While the design is robust, the implementation of several features requires advanced engine knowledge.
-
-*   **Spatial Acceleration Structure:** The system for `FindNearestPointWithValue` is not trivial. It requires implementing a dynamic Quadtree (or similar structure) in C++. This structure must support efficient addition and removal of points for mutable layers, preventing the need for costly full rebuilds.
+*   **Spatial Acceleration Structure:** The system for `FindNearestPointWithValue` requires implementing a dynamic Quadtree (or similar structure). This structure must support efficient addition and removal of points for mutable layers to prevent costly full rebuilds.
 *   **Asynchronous GPU Readback:** Implementing the `Periodic` or `OnDemand` readback requires direct interaction with Unreal's Render Hardware Interface (RHI). This involves using mechanisms like `RHICopyTextureToStagingBuffer` and managing callbacks from the render thread to the game thread to avoid stalling the game. This is the most technically complex part of the plugin.
-*   **Editor Tooling & I/O:**
-    *   A robust PNG importer must correctly handle **color space conversion** (sRGB to Linear) to ensure data integrity.
-    *   Creating a user-friendly editor experience for configuring the `DebugVisualization` (especially the color ramp curve) will require building a **custom details panel** using Slate C++.
+*   **Editor Tooling:** A robust PNG importer must correctly handle **color space conversion** (sRGB to Linear). Creating a user-friendly editor experience for the paint tools and debug visualization will require building custom details panels and editor modes using Slate/UMG.
 
-This data-driven, asset-based architecture provides an exceptionally powerful and flexible foundation for managing a complex game world. It empowers designers, streamlines development, and creates a single source of truth that enables deep, emergent gameplay systems.
+---
+
+## 8. Implementation Notes
+*   **Coordinate System:** Implement the `WorldToPixel` and `PixelToWorld` conversion functions carefully. They must use the `AWorldDataVolume`'s `WorldGridOrigin` as the anchor point for all calculations to correctly handle negative world coordinates. Use `FMath::FloorToInt` for the conversion, not a simple cast to `int`.
+*   **Data Access:** When accessing the `TArray<uint8> RawData`, you will need to cast the pointer based on the layer's `DataFormat`. For example: `float* FloatData = reinterpret_cast<float*>(Layer->RawData.GetData());`. Be extremely careful with this. An incorrect cast will cause memory corruption.
+*   **Event System:** The event binding maps (`TMap<FIntPoint, ...>`) can become large. When an object that has bound to an event is destroyed (e.g., a building is destroyed), you **must** call `UnbindAllFromObject(TheBuilding)` to remove its delegates from the maps. Failure to do so will result in dangling pointers and crashes.
+*   **Editor vs. Runtime Distinction:** Remember to wrap all editor-only code (`#include "Editor/EditorEngine.h"`, Slate UI, `FEdMode` logic) inside an `#if WITH_EDITOR` preprocessor directive. This ensures it is completely compiled out of the final packaged game.
+*   **Serialization:** When saving/loading the `.bin` files or save game data, always write a `Version` number as the very first entry. This allows you to maintain backward compatibility if you change the data layout in the future. You can read the version number first and then decide how to interpret the rest of the data.
+
+## 9. Conclusion
+
+This plugin provides a comprehensive, three-pronged approach to world data management:
+1.  **On-Demand Querying** for simple, direct state checks.
+2.  **Optimized Spatial Searching** for discovering features in a large world.
+3.  **Event-Driven Data-Binding** for highly efficient, reactive systems that respond to change rather than polling for it.
+
 
 ## Implementation Plan
 
@@ -195,10 +316,10 @@ This data-driven, asset-based architecture provides an exceptionally powerful an
 1.  **Create the Plugin Module:** Set up a new C++ plugin module in Unreal Engine (e.g., `MyWorldDataPlugin`).
 2.  **Define Core Classes (Skeletons):**
     *   Create `UWorldDataLayerAsset` (`UDataAsset`) with just the core identity (`LayerName`, `LayerID`) and data representation properties (`ResolutionMode`, `Resolution`/`CellSize`, `DataFormat`, `DefaultValue`).
-    *   Create `UMyWorldDataSubsystem` (`UGameInstanceSubsystem`) with a `TMap<FName, UWorldDataLayer*>`.
+    *   Create `UWorldLayersSubsystem` (`UGameInstanceSubsystem`) with a `TMap<FName, UWorldDataLayer*>`.
     *   Create `UWorldDataLayer` (`UObject`) with a `TArray<uint8> RawData` and a pointer to its `UWorldDataLayerAsset` config.
 3.  **Implement Subsystem Initialization:**
-    *   In `UMyWorldDataSubsystem::Initialize`, write the logic to find all `UWorldDataLayerAsset` assets in the project using the `AssetRegistry`.
+    *   In `UWorldLayersSubsystem::Initialize`, write the logic to find all `UWorldDataLayerAsset` assets in the project using the `AssetRegistry`.
     *   For each asset found, `new` a `UWorldDataLayer` runtime object, initialize its `RawData` array based on the configured resolution and `DefaultValue`, and add it to the `TMap`.
 4.  **Implement Core CPU API:**
     *   Implement the coordinate conversion logic (World to Layer Pixel and back).
@@ -209,10 +330,6 @@ This data-driven, asset-based architecture provides an exceptionally powerful an
     *   Create a test `UWorldDataLayerAsset` in the editor with a known resolution (e.g., 100x100) and data format (`R8`).
     *   In the test, get the subsystem, `SetValueAtLocation` at a few known world coordinates, and then use `GetValueAtLocation` to verify that the correct values are returned.
     *   Test edge cases: querying coordinates outside the world bounds, querying a layer that doesn't exist.
-2.  **Manual In-Game Test:**
-    *   Create a simple Blueprint Actor. In its `BeginPlay`, get the subsystem and programmatically set a few values on a layer (e.g., draw a line of '255' values).
-    *   Use a `DrawDebugSphere` to visually confirm the locations where you are setting the data.
-    *   Use a console command that calls `GetValueAtLocation` at the player's current position and prints the result to the screen. Walk over the line you drew and verify the printed values change.
 
 ---
 
@@ -222,7 +339,7 @@ This data-driven, asset-based architecture provides an exceptionally powerful an
 
 **Implementation Steps:**
 1.  **Implement `GetDebugTextureForLayer`:**
-    *   In `UMyWorldDataSubsystem`, create this function. It will get the specified `UWorldDataLayer`.
+    *   In `UWorldLayersSubsystem`, create this function. It will get the specified `UWorldDataLayer`.
     *   Inside the function, create a transient `UTexture2D` with the same resolution and a compatible pixel format.
     *   Lock the texture's mip data and `memcpy` the layer's `RawData` into the texture buffer. This creates a simple grayscale representation.
 2.  **Create Debug UMG Widget:**
@@ -258,7 +375,7 @@ This data-driven, asset-based architecture provides an exceptionally powerful an
     *   When the subsystem creates a layer, if `bKeepUpdatedOnGPU` is true, create a dynamic `UTexture2D` and store it in `GpuRepresentation`.
 3.  **Implement the "Dirty" System:**
     *   Add the `bool bIsDirty` flag to `UWorldDataLayer`. The `SetValueAtLocation` function must now set this flag to `true`.
-    *   In `UMyWorldDataSubsystem::Tick`, iterate all layers.
+    *   In `UWorldLayersSubsystem::Tick`, iterate all layers.
     *   If a layer `isDirty`, call a new internal function `SyncCPUToGPU(Layer)`. This function will update the `GpuRepresentation` texture with the `RawData`. For now, a simple full texture update is fine.
     *   Reset `bIsDirty` to `false` after the update.
 4.  **Expose GPU Texture:** Implement `GetLayerGpuTexture(FName)` in the subsystem.
@@ -295,9 +412,10 @@ This data-driven, asset-based architecture provides an exceptionally powerful an
     *   Create a scenario where you are rapidly updating many small, separate areas of a layer.
     *   Use Unreal's `Stat GPU` and `Stat CPU` to compare the performance of the old full-texture update vs. the new dirty-region update. You should see a significant improvement.
 
+33. **Event subscriptions**
 ---
 
-### Stage 5: GPU-to-CPU and Final Polish
+### Stage 5: GPU-to-CPU 
 
 **Goal:** Implement the most complex part of the system—getting data back from the GPU—and add the final user-facing polish.
 
@@ -322,3 +440,5 @@ This data-driven, asset-based architecture provides an exceptionally powerful an
     *   **Verification:** After 1-2 frames, the Blueprint's printed value should change from 0 to 255, proving the data has completed the round trip from GPU to CPU.
 2.  **Designer Workflow Test:**
     *   Hand the system off to a non-programmer. Ask them to create a new layer for "Fertility," paint it in Photoshop, import it, and hook it up to a material for visualization, all without writing code. Their ability to do this successfully is the ultimate test of your UX and tooling.
+	
+	

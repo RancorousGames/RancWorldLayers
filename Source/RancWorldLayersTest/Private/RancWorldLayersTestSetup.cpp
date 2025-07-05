@@ -63,7 +63,8 @@ static UWorldLayersSubsystem* EnsureSubsystem(UWorld* World, const FName& TestNa
 class FRancWorldLayersTestFixture
 {
 public:
-	FRancWorldLayersTestFixture(FName TestName)
+	FRancWorldLayersTestFixture(FName TestName, FVector2D InWorldBounds = FVector2D(102400.0f, 102400.0f))
+		: WorldBounds(InWorldBounds)
 	{
 		World = CreateTestWorld(TestName);
 		Subsystem = EnsureSubsystem(World, TestName);
@@ -108,6 +109,8 @@ private:
 	// ADD THIS MEMBER VARIABLE
 	UPROPERTY() // UPROPERTY to prevent garbage collection
 	TObjectPtr<UWorldDataLayerAsset> TestLayerAsset = nullptr;
+
+	FVector2D WorldBounds;
 };
 
 #endif // #if WITH_DEV_AUTOMATION_TESTS

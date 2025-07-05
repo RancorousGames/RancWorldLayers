@@ -5,6 +5,8 @@
 #include "WorldDataLayerAsset.h"
 #include "WorldDataLayer.generated.h"
 
+class FQuadtree;
+
 UCLASS()
 class RANCWORLDLAYERS_API UWorldDataLayer : public UObject
 {
@@ -22,7 +24,11 @@ public:
 	bool bIsDirty;
 
 	UPROPERTY()
-	UTexture2D* GpuRepresentation;
+	UTexture* GpuRepresentation;
+
+	TMap<FLinearColor, TSharedPtr<FQuadtree>> SpatialIndices;
+
+	float LastReadbackTime;
 
 	void Initialize(UWorldDataLayerAsset* InConfig);
 	FLinearColor GetValueAtPixel(const FIntPoint& PixelCoords) const;

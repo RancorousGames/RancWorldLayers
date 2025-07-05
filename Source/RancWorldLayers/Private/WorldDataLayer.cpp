@@ -1,4 +1,5 @@
 #include "WorldDataLayer.h"
+#include "Spatial/Quadtree.h"
 
 void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig)
 {
@@ -29,6 +30,35 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig)
 	}
 
 	bIsDirty = false;
+	LastReadbackTime = 0.0f;
+
+	// Initialize Spatial Index if configured
+	if (Config->SpatialOptimization.bBuildAccelerationStructure)
+	{
+		SpatialIndices.Empty();
+		for (const FLinearColor& ValueToTrack : Config->SpatialOptimization.ValuesToTrack)
+		{
+			SpatialIndices.Emplace(ValueToTrack, MakeShared<FQuadtree>(FBox2D(FVector2D(0, 0), FVector2D(Resolution.X, Resolution.Y))));
+		}
+
+		// Populate initial data
+		for (int32 Y = 0; Y < Resolution.Y; ++Y)
+		{
+			for (int32 X = 0; X < Resolution.X; ++X)
+			{
+				FIntPoint PixelCoords(X, Y);
+				FLinearColor PixelValue = GetValueAtPixel(PixelCoords);
+				for (const auto& Elem : SpatialIndices)
+				{
+					if (PixelValue.Equals(Elem.Key, KINDA_SMALL_NUMBER))
+					{
+						Elem.Value->Insert(PixelCoords);
+						break;
+					}
+				}
+			}
+		}
+	}
 }
 
 FLinearColor UWorldDataLayer::GetValueAtPixel(const FIntPoint& PixelCoords) const
@@ -98,6 +128,21 @@ void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinea
 	}
 
 	bIsDirty = true;
+
+	// Update Spatial Index if configured
+	if (Config->SpatialOptimization.bBuildAccelerationStructure && !SpatialIndices.IsEmpty())
+	{
+		// This is a naive implementation that only adds points.
+		// A more robust solution would also need to remove the point from its previous value's quadtree.
+		for (const auto& Elem : SpatialIndices)
+		{
+			if (NewValue.Equals(Elem.Key, KINDA_SMALL_NUMBER))
+			{
+				Elem.Value->Insert(PixelCoords);
+				break;
+			}
+		}
+	}
 }
 
 int32 UWorldDataLayer::GetPixelIndex(const FIntPoint& PixelCoords) const
