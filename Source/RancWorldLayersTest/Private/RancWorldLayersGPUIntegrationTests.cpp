@@ -62,8 +62,6 @@ public:
 		GPUTestLayerAsset->GPUConfiguration.bIsGPUWritable = true;
 		GPUTestLayerAsset->GPUConfiguration.ReadbackBehavior = EWorldDataLayerReadbackBehavior::Periodic;
 		GPUTestLayerAsset->GPUConfiguration.PeriodicReadbackSeconds = 0.1f; // Fast readback
-		GPUTestLayerAsset->WorldGridOrigin = FVector2D(0.0f, 0.0f);
-		GPUTestLayerAsset->WorldGridSize = FVector2D(16.0f, 16.0f);
 		Subsystem->RegisterDataLayer(GPUTestLayerAsset);
 
 		FName TestLayerName = GPUTestLayerAsset->LayerName;

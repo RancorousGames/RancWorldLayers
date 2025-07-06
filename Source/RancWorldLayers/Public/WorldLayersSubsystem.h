@@ -11,6 +11,7 @@
 #include "RHIResources.h"
 
 class UWorldDataLayerAsset;
+class AWorldDataVolume;
 
 #include "WorldLayersSubsystem.generated.h"
 
@@ -58,11 +59,17 @@ private:
 	UPROPERTY()
 	TMap<FName, UWorldDataLayer*> WorldDataLayers;
 
+	UPROPERTY()
+	TWeakObjectPtr<AWorldDataVolume> WorldDataVolume;
+
+	FVector2D WorldGridOrigin;
+	FVector2D WorldGridSize;
+
 	FTSTicker::FDelegateHandle TickHandle;
 
 	void SyncCPUToGPU(UWorldDataLayer* DataLayer);
 	void ReadbackTexture(UWorldDataLayer* DataLayer);
 
-	FIntPoint WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* DataLayer) const;
-	FVector2D PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* DataLayer) const;
+	FIntPoint WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* Layer) const;
+	FVector2D PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* Layer) const;
 };

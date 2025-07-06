@@ -116,13 +116,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation", meta = (EditCondition = "ResolutionMode == EResolutionMode::RelativeToWorld", EditConditionHides))
 	FVector2D CellSize;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
-	FVector2D WorldGridOrigin;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
-	FVector2D WorldGridSize;
-
+	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
 	EDataFormat DataFormat;
 

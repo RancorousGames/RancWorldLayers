@@ -30,11 +30,12 @@ public:
 
 	float LastReadbackTime;
 
-	void Initialize(UWorldDataLayerAsset* InConfig);
+	void Initialize(UWorldDataLayerAsset* InConfig, const FVector2D& InWorldGridSize);
 	FLinearColor GetValueAtPixel(const FIntPoint& PixelCoords) const;
 	void SetValueAtPixel(const FIntPoint& PixelCoords, const FLinearColor& NewValue);
+	
+	int32 GetBytesPerPixel() const;
 
 private:
 	int32 GetPixelIndex(const FIntPoint& PixelCoords) const;
-	int32 GetBytesPerPixel() const;
 };

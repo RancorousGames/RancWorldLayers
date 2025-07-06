@@ -1,24 +1,47 @@
 #include "WorldLayersSubsystem.h"
-#include "Rendering/Texture2DResource.h"
 #include "Engine/TextureRenderTarget2D.h"
-
 #include "ImageUtils.h"
-#include "AssetRegistry/AssetRegistryModule.h"
+#include "EngineUtils.h"
+#include "RHICommandList.h"
 #include "WorldDataLayerAsset.h"
+#include "DynamicRHI.h"
+#include "WorldDataVolume.h"
+#include "Spatial/Quadtree.h"
 
 void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	// Discover all UWorldDataLayerAsset assets
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	TArray<FAssetData> AssetData;
-	AssetRegistryModule.Get().GetAssetsByClass(UWorldDataLayerAsset::StaticClass()->GetClassPathName(), AssetData);
-
-	for (const FAssetData& Data : AssetData)
+	// On initialization, find the AWorldDataVolume in the world to configure the subsystem.
+	if (UWorld* World = GetWorld())
 	{
-		UWorldDataLayerAsset* LayerAsset = Cast<UWorldDataLayerAsset>(Data.GetAsset());
-		RegisterDataLayer(LayerAsset);
+		AWorldDataVolume* FoundVolume = nullptr;
+		for (TActorIterator<AWorldDataVolume> It(World); It; ++It)
+		{
+			FoundVolume = *It;
+			break; // Find the first one
+		}
+
+		if (FoundVolume)
+		{
+			WorldDataVolume = FoundVolume;
+			const FBox VolumeBounds = FoundVolume->GetBounds().GetBox();
+			WorldGridOrigin = FVector2D(VolumeBounds.Min.X, VolumeBounds.Min.Y);
+			WorldGridSize = FVector2D(VolumeBounds.GetSize().X, VolumeBounds.GetSize().Y);
+
+			// Load and register all layers specified in the volume
+			for (const TSoftObjectPtr<UWorldDataLayerAsset>& LayerAssetPtr : FoundVolume->LayerAssets)
+			{
+				if (UWorldDataLayerAsset* LayerAsset = LayerAssetPtr.LoadSynchronous())
+				{
+					RegisterDataLayer(LayerAsset);
+				}
+			}
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("UWorldLayersSubsystem: No AWorldDataVolume found in the world. Subsystem will be inactive."));
+		}
 	}
 
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UWorldLayersSubsystem::Tick));
@@ -46,23 +69,18 @@ bool UWorldLayersSubsystem::Tick(float DeltaTime)
 		}
 
 		// Handle GPU to CPU readback
-		if (Layer->Config->GPUConfiguration.bIsGPUWritable && Layer->GpuRepresentation)
+		if (Layer->Config->GPUConfiguration.bIsGPUWritable && Layer->GpuRepresentation && WorldDataVolume.IsValid())
 		{
 			const EWorldDataLayerReadbackBehavior ReadbackBehavior = Layer->Config->GPUConfiguration.ReadbackBehavior;
 			const float PeriodicReadbackSeconds = Layer->Config->GPUConfiguration.PeriodicReadbackSeconds;
 
 			if (ReadbackBehavior == EWorldDataLayerReadbackBehavior::Periodic)
 			{
-				if (GetWorld()->GetTimeSeconds() - Layer->LastReadbackTime >= PeriodicReadbackSeconds)
+				if (GetWorld() && GetWorld()->GetTimeSeconds() - Layer->LastReadbackTime >= PeriodicReadbackSeconds)
 				{
 					ReadbackTexture(Layer);
 					Layer->LastReadbackTime = GetWorld()->GetTimeSeconds();
 				}
-			}
-			else if (ReadbackBehavior == EWorldDataLayerReadbackBehavior::OnDemand)
-			{
-				// OnDemand readback would be triggered by a specific API call, not here.
-				// For now, we can just ensure it doesn't continuously read back.
 			}
 		}
 	}
@@ -86,9 +104,7 @@ UWorldLayersSubsystem* UWorldLayersSubsystem::Get(UObject* WorldContext)
 		return nullptr;
 	}
 
-	// Get the subsystem; if it doesn't exist, Unreal Engine will handle the creation automatically
 	UWorldLayersSubsystem* Subsystem = GameInstance->GetSubsystem<UWorldLayersSubsystem>();
-
 	if (!Subsystem)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("UMyWorldDataSubsystem is not found, but it should have been automatically created."));
@@ -101,14 +117,13 @@ UWorldLayersSubsystem* UWorldLayersSubsystem::Get(UObject* WorldContext)
 
 bool UWorldLayersSubsystem::GetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const
 {
-	const UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName);
-	if (DataLayer)
+	if (const UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName))
 	{
 		FIntPoint PixelCoords = WorldLocationToPixel(WorldLocation, DataLayer);
 		OutValue = DataLayer->GetValueAtPixel(PixelCoords);
 		return true;
 	}
-	OutValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f); // Initialize OutValue to (0,0,0,0) if layer not found
+	OutValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
 	return false;
 }
 
@@ -117,15 +132,14 @@ float UWorldLayersSubsystem::GetFloatValueAtLocation(FName LayerName, const FVec
 	FLinearColor Value;
 	if (GetValueAtLocation(LayerName, WorldLocation, Value))
 	{
-		return Value.R; // Assuming R channel holds the float value for single-channel layers
+		return Value.R;
 	}
 	return 0.0f;
 }
 
 void UWorldLayersSubsystem::SetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, const FLinearColor& NewValue)
 {
-	UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName);
-	if (DataLayer)
+	if (UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName))
 	{
 		FIntPoint PixelCoords = WorldLocationToPixel(WorldLocation, DataLayer);
 		DataLayer->SetValueAtPixel(PixelCoords, NewValue);
@@ -137,7 +151,7 @@ void UWorldLayersSubsystem::RegisterDataLayer(UWorldDataLayerAsset* LayerAsset)
 	if (LayerAsset)
 	{
 		UWorldDataLayer* NewDataLayer = NewObject<UWorldDataLayer>(this);
-		NewDataLayer->Initialize(LayerAsset);
+		NewDataLayer->Initialize(LayerAsset, WorldGridSize);
 		WorldDataLayers.Add(LayerAsset->LayerName, NewDataLayer);
 
 		if (LayerAsset->GPUConfiguration.bKeepUpdatedOnGPU)
@@ -186,8 +200,6 @@ bool UWorldLayersSubsystem::FindNearestPointWithValue(FName LayerName, const FVe
 		return false;
 	}
 
-	// Find the specific quadtree for the TargetValue.
-	// We iterate and use Equals() to handle floating point inaccuracies, instead of a direct TMap::Find().
 	TSharedPtr<FQuadtree> TargetQuadtree;
 	for (const auto& Elem : DataLayer->SpatialIndices)
 	{
@@ -200,16 +212,15 @@ bool UWorldLayersSubsystem::FindNearestPointWithValue(FName LayerName, const FVe
 
 	if (!TargetQuadtree)
 	{
-		// The requested value is not being tracked, so no quadtree exists for it.
 		return false;
 	}
 
-	// Convert world search origin to pixel coordinates
 	FIntPoint SearchPixel = WorldLocationToPixel(SearchOrigin, DataLayer);
+	const float PixelSizeX = WorldGridSize.X / DataLayer->Resolution.X;
+	const float PixelRadius = MaxSearchRadius / PixelSizeX;
 
-	// Perform search in the correct, value-specific quadtree
 	FIntPoint NearestPixel;
-	if (TargetQuadtree->FindNearest(SearchPixel, MaxSearchRadius, NearestPixel))
+	if (TargetQuadtree->FindNearest(SearchPixel, PixelRadius, NearestPixel))
 	{
 		OutWorldLocation = PixelToWorldLocation(NearestPixel, DataLayer);
 		return true;
@@ -218,62 +229,91 @@ bool UWorldLayersSubsystem::FindNearestPointWithValue(FName LayerName, const FVe
 	return false;
 }
 
+/** Queues an asynchronous readback of a GPU texture to a staging buffer. This is non-blocking. */
 void UWorldLayersSubsystem::ReadbackTexture(UWorldDataLayer* DataLayer)
 {
-	if (!DataLayer || !DataLayer->GpuRepresentation)
+	if (!DataLayer || !DataLayer->GpuRepresentation || !DataLayer->Config->GPUConfiguration.bIsGPUWritable)
 	{
 		return;
 	}
 
 	UTextureRenderTarget2D* RenderTarget = Cast<UTextureRenderTarget2D>(DataLayer->GpuRepresentation);
-	if (!RenderTarget)
-	{
-		return;
-	}
+	if (!RenderTarget || !RenderTarget->GetResource()) return;
 
-	FTextureRenderTargetResource* RenderTargetResource = RenderTarget->GameThread_GetRenderTargetResource();
-	if (RenderTargetResource)
+	FTextureResource* TextureResource = RenderTarget->GetResource();
+	const FName LayerName = DataLayer->Config->LayerName;
+	
+	// Enqueue a command on the render thread to perform the readback.
+	ENQUEUE_RENDER_COMMAND(ReadSurfaceCommand)(
+	[this, TextureResource, LayerName](FRHICommandListImmediate& RHICmdList)
 	{
-		TArray<FColor> Pixels;
-		// ReadPixels is a synchronous call that reads the GPU data back to the CPU.
-		// It expects the pixel format to be FColor (BGRA8).
-		RenderTargetResource->ReadPixels(Pixels);
-
-		// Assuming RGBA8 for now, need to handle other formats based on DataLayer->Config->DataFormat
-		// This part needs to be robust for different pixel formats.
-		// For simplicity, we'll assume RGBA8 for now and copy directly.
-		// A more complete solution would involve converting from FColor to the layer's native format.
+		// This code now runs on the Render Thread.
 		
-		// Ensure RawData has enough space
-		DataLayer->RawData.SetNum(Pixels.Num() * sizeof(FColor));
-		FMemory::Memcpy(DataLayer->RawData.GetData(), Pixels.GetData(), Pixels.Num() * sizeof(FColor));
+		FRHITexture* TextureRHI = TextureResource->GetTexture2DRHI();
+		if (!TextureRHI) return;
 
-		DataLayer->bIsDirty = true;
-	}
+		FIntRect ReadbackRect(0, 0, TextureRHI->GetSizeX(), TextureRHI->GetSizeY());
+
+		// Create a TArray to hold the readback data. This will be populated by the RHI function.
+		TArray<FColor> ReadbackData;
+
+		// Call the CORRECT, SYNCHRONOUS readback function. This will block the render thread briefly.
+		// GetReference() is used to get the raw pointer from the RHI ref.
+		RHICmdList.ReadSurfaceData(
+			TextureRHI,
+			ReadbackRect,
+			ReadbackData,
+			FReadSurfaceDataFlags()
+		);
+
+		// Now that we have the data, schedule a task to process it back on the game thread.
+		// We move the ReadbackData array into the lambda to transfer ownership safely.
+		AsyncTask(ENamedThreads::GameThread, [this, LayerName, ReadbackData = MoveTemp(ReadbackData)]()
+		{
+			// This code now runs safely on the Game Thread.
+			if (UWorldDataLayer* LayerToUpdate = WorldDataLayers.FindRef(LayerName))
+			{
+				const int32 TotalBytes = LayerToUpdate->Resolution.X * LayerToUpdate->Resolution.Y * LayerToUpdate->GetBytesPerPixel();
+				if (ReadbackData.Num() * sizeof(FColor) == TotalBytes)
+				{
+					LayerToUpdate->RawData.SetNum(TotalBytes);
+					FMemory::Memcpy(LayerToUpdate->RawData.GetData(), ReadbackData.GetData(), TotalBytes);
+					LayerToUpdate->bIsDirty = true;
+				}
+			}
+		});
+	});
 }
 
+
+/** Updates a GPU texture from CPU data. Now handles both UTexture2D and UTextureRenderTarget2D. */
 void UWorldLayersSubsystem::SyncCPUToGPU(UWorldDataLayer* DataLayer)
 {
-	if (!DataLayer || !DataLayer->GpuRepresentation)
+	if (!DataLayer || !DataLayer->GpuRepresentation || !DataLayer->GpuRepresentation->GetResource())
 	{
 		return;
 	}
 
-	FTexture2DResource* TextureResource = (FTexture2DResource*)DataLayer->GpuRepresentation->GetResource();
-	if (TextureResource)
+	FTextureResource* TextureResource = DataLayer->GpuRepresentation->GetResource();
+	const int32 Width = DataLayer->Resolution.X;
+	const int32 Height = DataLayer->Resolution.Y;
+	const int32 BytesPerPixel = DataLayer->GetBytesPerPixel();
+	const uint32 Stride = Width * BytesPerPixel;
+	TArray<uint8> RawDataCopy = DataLayer->RawData; // Make a copy for the lambda
+
+	ENQUEUE_RENDER_COMMAND(UpdateWorldDataLayerTexture)(
+	[TextureResource, Width, Height, Stride, RawDataCopy](FRHICommandListImmediate& RHICmdList)
 	{
-		ENQUEUE_RENDER_COMMAND(UpdateTextureRegionsData)(
-			[TextureResource, RawData = DataLayer->RawData, Width = DataLayer->Resolution.X, Height = DataLayer->Resolution.Y](FRHICommandListImmediate& RHICmdList)
-			{
-				FUpdateTextureRegion2D UpdateRegion(0, 0, 0, 0, Width, Height);
-				RHICmdList.UpdateTexture2D(TextureResource->GetTexture2DRHI(), 0, UpdateRegion, Width * (RawData.GetTypeSize() * 4), RawData.GetData());
-			}
-		);
-	}
+		FUpdateTextureRegion2D UpdateRegion(0, 0, 0, 0, Width, Height);
+		FTexture2DRHIRef Texture2DRHI = TextureResource->GetTexture2DRHI();
+		if (Texture2DRHI)
+		{
+			RHICmdList.UpdateTexture2D(Texture2DRHI, 0, UpdateRegion, Stride, RawDataCopy.GetData());
+		}
+	});
 }
 
 #include "Curves/CurveLinearColor.h"
-#include "WorldDataLayer.h"
 
 UTexture2D* UWorldLayersSubsystem::GetDebugTextureForLayer(FName LayerName, UTexture2D* InDebugTexture)
 {
@@ -337,7 +377,6 @@ UTexture2D* UWorldLayersSubsystem::GetDebugTextureForLayer(FName LayerName, UTex
 
 void UWorldLayersSubsystem::ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath)
 {
-	// It's good practice to check for a valid LayerAsset first
 	if (!LayerAsset)
 	{
 		return;
@@ -346,35 +385,28 @@ void UWorldLayersSubsystem::ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, c
 	UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerAsset->LayerName);
 	if (!DataLayer)
 	{
-		// Log a warning if the layer isn't registered in the subsystem
 		UE_LOG(LogTemp, Warning, TEXT("ExportLayerToPNG: Could not find registered data layer '%s'"), *LayerAsset->LayerName.ToString());
 		return;
 	}
 
-	// 1. Create a TArray to hold the raw FColor pixel data.
 	TArray<FColor> RawColorData;
 	const int32 Width = DataLayer->Resolution.X;
 	const int32 Height = DataLayer->Resolution.Y;
 	RawColorData.SetNumUninitialized(Width * Height);
 
-	// 2. Copy data from your custom layer format to the FColor TArray.
 	for (int32 y = 0; y < Height; ++y)
 	{
 		for (int32 x = 0; x < Width; ++x)
 		{
 			const FLinearColor PixelValue = DataLayer->GetValueAtPixel(FIntPoint(x, y));
-			RawColorData[y * Width + x] = PixelValue.ToFColor(true); // Convert to sRGB FColor
+			RawColorData[y * Width + x] = PixelValue.ToFColor(true);
 		}
 	}
 
-	// 3. Create an FImageView which is a lightweight "view" of your raw data.
 	const FImageView ImageView(RawColorData.GetData(), Width, Height, ERawImageFormat::BGRA8);
-
-	// 4. Use FImageUtils to compress the view into a PNG byte buffer.
 	TArray64<uint8> CompressedData;
 	if (FImageUtils::CompressImage(CompressedData, TEXT("png"), ImageView))
 	{
-		// 5. Use FFileHelper to save the byte buffer to disk.
 		FFileHelper::SaveArrayToFile(CompressedData, *FilePath);
 	}
 	else
@@ -411,47 +443,33 @@ void UWorldLayersSubsystem::ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset,
 
 FIntPoint UWorldLayersSubsystem::WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* DataLayer) const
 {
-	const FVector2D WorldBounds = DataLayer->Config->WorldGridSize;
-
-	FVector2D NormalizedLocation = (WorldLocation - DataLayer->Config->WorldGridOrigin) / WorldBounds;
+	FVector2D RelativeLocation = WorldLocation - WorldGridOrigin;
 
 	int32 PixelX;
 	int32 PixelY;
 
-	if (DataLayer->Config->ResolutionMode == EResolutionMode::Absolute)
-	{
-		PixelX = FMath::FloorToInt(NormalizedLocation.X * DataLayer->Resolution.X);
-		PixelY = FMath::FloorToInt(NormalizedLocation.Y * DataLayer->Resolution.Y);
-	}
-	else // RelativeToWorld
-	{
-		PixelX = FMath::FloorToInt(WorldLocation.X / DataLayer->Config->CellSize.X);
-		PixelY = FMath::FloorToInt(WorldLocation.Y / DataLayer->Config->CellSize.Y);
-	}
+	const FVector2D CellSize = FVector2D(WorldGridSize.X / DataLayer->Resolution.X, WorldGridSize.Y / DataLayer->Resolution.Y);
 
-	// Clamp pixel coordinates to be within the layer's resolution
-	PixelX = FMath::Clamp(PixelX, 0, DataLayer->Resolution.X - 1);
-	PixelY = FMath::Clamp(PixelY, 0, DataLayer->Resolution.Y - 1);
+	PixelX = FMath::FloorToInt(RelativeLocation.X / CellSize.X);
+	PixelY = FMath::FloorToInt(RelativeLocation.Y / CellSize.Y);
+
+	if (WorldDataVolume.IsValid() && WorldDataVolume->OutOfBoundsBehavior == EOutOfBoundsBehavior::ClampToEdge)
+	{
+		PixelX = FMath::Clamp(PixelX, 0, DataLayer->Resolution.X - 1);
+		PixelY = FMath::Clamp(PixelY, 0, DataLayer->Resolution.Y - 1);
+	}
 
 	return FIntPoint(PixelX, PixelY);
 }
 
 FVector2D UWorldLayersSubsystem::PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* DataLayer) const
 {
-	const FVector2D WorldBounds = DataLayer->Config->WorldGridSize;
-
 	FVector2D WorldLocation;
+	const FVector2D CellSize = FVector2D(WorldGridSize.X / DataLayer->Resolution.X, WorldGridSize.Y / DataLayer->Resolution.Y);
 
-	if (DataLayer->Config->ResolutionMode == EResolutionMode::Absolute)
-	{
-		WorldLocation.X = (static_cast<float>(PixelLocation.X) / DataLayer->Resolution.X) * WorldBounds.X + DataLayer->Config->WorldGridOrigin.X;
-		WorldLocation.Y = (static_cast<float>(PixelLocation.Y) / DataLayer->Resolution.Y) * WorldBounds.Y + DataLayer->Config->WorldGridOrigin.Y;
-	}
-	else // RelativeToWorld
-	{
-		WorldLocation.X = PixelLocation.X * DataLayer->Config->CellSize.X;
-		WorldLocation.Y = PixelLocation.Y * DataLayer->Config->CellSize.Y;
-	}
-
+	// Return the center of the pixel
+	WorldLocation.X = (PixelLocation.X + 0.5f) * CellSize.X + WorldGridOrigin.X;
+	WorldLocation.Y = (PixelLocation.Y + 0.5f) * CellSize.Y + WorldGridOrigin.Y;
+	
 	return WorldLocation;
 }

@@ -19,13 +19,15 @@ public:
 	FQuadtree(const FBox2D& InBounds, int32 InMaxPointsPerNode = 4);
 
 	void Insert(const FIntPoint& Point);
+	bool Remove(const FIntPoint& Point);
 	bool FindNearest(const FIntPoint& SearchPoint, float MaxSearchRadius, FIntPoint& OutNearestPoint) const;
 
 private:
 	void Subdivide(FQuadtreeNode* Node);
 	int32 GetChildIndexForPoint(const FQuadtreeNode* Node, const FIntPoint& Point) const;
 	void FindNearestRecursive(const FQuadtreeNode* Node, const FIntPoint& SearchPoint, float& MinDistanceSq, FIntPoint& OutNearestPoint) const;
-
+	bool RemoveFromNode(FQuadtreeNode* Node, const FIntPoint& Point);
+	
 	TUniquePtr<FQuadtreeNode> Root;
 	int32 MaxPointsPerNode;
 };

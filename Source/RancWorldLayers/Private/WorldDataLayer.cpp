@@ -1,20 +1,17 @@
 #include "WorldDataLayer.h"
 #include "Spatial/Quadtree.h"
 
-void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig)
+void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D& InWorldGridSize)
 {
 	Config = TObjectPtr<UWorldDataLayerAsset>(InConfig);
 
 	if (Config->ResolutionMode == EResolutionMode::Absolute)
 	{
 		Resolution = Config->Resolution;
-	}
-	else // RelativeToWorld
+	} else // RelativeToWorld
 	{
-		// Placeholder for world bounds. This should ideally come from a global game setting or world properties.
-		const FVector2D WorldBounds = FVector2D(102400.0f, 102400.0f); // Assuming 1024m x 1024m world
-		Resolution.X = FMath::RoundToInt(WorldBounds.X / Config->CellSize.X);
-		Resolution.Y = FMath::RoundToInt(WorldBounds.Y / Config->CellSize.Y);
+		Resolution.X = FMath::RoundToInt(InWorldGridSize.X / Config->CellSize.X);
+		Resolution.Y = FMath::RoundToInt(InWorldGridSize.Y / Config->CellSize.Y);
 	}
 
 	int32 BytesPerPixel = GetBytesPerPixel();

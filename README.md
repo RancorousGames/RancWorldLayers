@@ -1,6 +1,3 @@
-Of course. Here is the combined documentation, incorporating all details from V2.0, V3.0, and V5.0. Where concepts evolved or conflicted, the latest version's approach has been used, while ensuring no valuable details from earlier versions were lost.
-
-***
 
 # Multi-Layered Semantic World Map Plugin for Unreal Engine (Combined)
 
@@ -68,9 +65,9 @@ This is the central anchor point placed in each level. It defines the spatial bo
     *   `EOutOfBoundsBehavior OutOfBoundsBehavior = EOutOfBoundsBehavior::ReturnDefaultValue;`
         *   **Description:** An enum (`ReturnDefaultValue`, `ClampToEdge`) that globally defines how queries for locations outside the volume's bounds are handled.
 *   **Implicit Properties (Derived at Runtime):**
-    *   **WorldGridOrigin (`FVector2D`):** Calculated from `GetBounds().GetBox().Min`. This is the world coordinate that maps to pixel (0,0).
-    *   **WorldGridSize (`FVector2D`):** Calculated from `GetBounds().GetBox().GetSize()`. This is the total world-space size of the managed area.
-	
+    *   **WorldGridOrigin (`FVector2D`):** The world-space coordinate (X, Y) corresponding to the bottom-left corner of the `(0, 0)` grid cell. Calculated from `GetBounds().GetBox().Min`.
+    *   **WorldGridSize (`FVector2D`):** The total world-space size (X, Y) of the managed area. Calculated from `GetBounds().GetBox().GetSize()`.
+
 	Of course. Here is a dense, to-the-point documentation block for just the coordinate conversion system.
 
 ---
@@ -412,7 +409,10 @@ This plugin provides a comprehensive, three-pronged approach to world data manag
     *   Create a scenario where you are rapidly updating many small, separate areas of a layer.
     *   Use Unreal's `Stat GPU` and `Stat CPU` to compare the performance of the old full-texture update vs. the new dirty-region update. You should see a significant improvement.
 
-33. **Event subscriptions**
+3. **Event Subscriptions:**
+    *   Implement the `UWorldDataSubscription` class and the `SubscribeTo...` API in the subsystem.
+    *   This includes the underlying `TMap`s for tracking delegates.
+    *   Modify `SetValueAt...` functions to broadcast events to any relevant subscribers.
 ---
 
 ### Stage 5: GPU-to-CPU 

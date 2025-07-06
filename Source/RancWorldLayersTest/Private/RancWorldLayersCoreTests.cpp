@@ -77,7 +77,7 @@ public:
 		Res &= Test->TestEqual("Value at TestLocation2 should match TestValue2", OutValue2.R, ExpectedValue2, KINDA_SMALL_NUMBER);
 
 		// Test a location outside the assumed 1024x1024 world bounds (which maps to 100x100 pixels)
-		FVector2D OutOfBoundsLocation = FVector2D(2000.0f, 2000.0f);
+		FVector2D OutOfBoundsLocation = FVector2D(20000.0f, 20000.0f);
 		FLinearColor OutOfBoundsValue;
 		bool bSuccessOutOfBounds = Subsystem->GetValueAtLocation(TestLayerName, OutOfBoundsLocation, OutOfBoundsValue);
 		Res &= Test->TestTrue("GetValueAtLocation should succeed for out of bounds but return default", bSuccessOutOfBounds);

@@ -22,7 +22,9 @@ public class RancWorldLayersEditor : ModuleRules
 				"Slate",
 				"SlateCore",
 				"UnrealEd",
-				"Projects"
+				"Projects",
+				"RHI",
+				"RenderCore"
 			}
 		);
 	}

@@ -5,7 +5,9 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/WorldSettings.h"
-#include "RancWorldLayers/Public/WorldDataLayerAsset.h"
+#include "WorldDataLayerAsset.h"
+#include "WorldDataVolume.h"
+#include "Engine/BrushBuilder.h"
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
@@ -63,12 +65,21 @@ static UWorldLayersSubsystem* EnsureSubsystem(UWorld* World, const FName& TestNa
 class FRancWorldLayersTestFixture
 {
 public:
-	FRancWorldLayersTestFixture(FName TestName, FVector2D InWorldBounds = FVector2D(102400.0f, 102400.0f))
-		: WorldBounds(InWorldBounds)
+	FRancWorldLayersTestFixture(FName TestName, FVector2D InWorldBounds = FVector2D(10000.0f, 10000.0f))
 	{
 		World = CreateTestWorld(TestName);
+		
+		// Spawn and configure the AWorldDataVolume, which now drives the subsystem
+		DataVolume = World->SpawnActor<AWorldDataVolume>();
+		DataVolume->SetActorLocation(FVector(InWorldBounds.X / 2.0, InWorldBounds.Y / 2.0, 0));
+		DataVolume->SetActorScale3D(FVector(InWorldBounds.X / 100.0, InWorldBounds.Y / 100.0, 100.0)); // Scale is in brush units (200cm)
+		DataVolume->BrushBuilder->Build(World, DataVolume);
+
+		// Get the subsystem, which will now initialize from the volume
 		Subsystem = EnsureSubsystem(World, TestName);
-		RegisterTestLayer();
+		
+		// Now create and register the test layer via the volume
+		CreateAndRegisterTestLayer();
 	}
 
 	~FRancWorldLayersTestFixture()
@@ -82,35 +93,33 @@ public:
 
 	UWorld* GetWorld() const { return World; }
 	UWorldLayersSubsystem* GetSubsystem() const { return Subsystem; }
-	// ADD THIS GETTER
 	UWorldDataLayerAsset* GetTestLayerAsset() const { return TestLayerAsset; }
+	AWorldDataVolume* GetDataVolume() const { return DataVolume; }
 
 private:
-	void RegisterTestLayer()
+	void CreateAndRegisterTestLayer()
 	{
-		if (!Subsystem) return;
+		if (!Subsystem || !DataVolume) return;
 
 		// The asset is now stored in our member variable
 		TestLayerAsset = NewObject<UWorldDataLayerAsset>();
 		TestLayerAsset->LayerName = FName("TestLayer");
-		TestLayerAsset->ResolutionMode = EResolutionMode::Absolute; // Be explicit for clarity
+		TestLayerAsset->ResolutionMode = EResolutionMode::Absolute;
 		TestLayerAsset->Resolution = FIntPoint(100, 100);
 		TestLayerAsset->DataFormat = EDataFormat::R8;
 		TestLayerAsset->DefaultValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
-		TestLayerAsset->bAllowPNG_IO = true; // Ensure this is true for the test
+		TestLayerAsset->bAllowPNG_IO = true;
 
+		// Add the asset to the volume's list and re-initialize the subsystem
+		DataVolume->LayerAssets.Add(TestLayerAsset);
 		Subsystem->RegisterDataLayer(TestLayerAsset);
 	}
 	
-	// ... CreateTestWorld and EnsureSubsystem functions remain the same ...
-
 	UWorld* World = nullptr;
 	UWorldLayersSubsystem* Subsystem = nullptr;
-	// ADD THIS MEMBER VARIABLE
+	AWorldDataVolume* DataVolume = nullptr;
 	UPROPERTY() // UPROPERTY to prevent garbage collection
 	TObjectPtr<UWorldDataLayerAsset> TestLayerAsset = nullptr;
-
-	FVector2D WorldBounds;
 };
 
 #endif // #if WITH_DEV_AUTOMATION_TESTS

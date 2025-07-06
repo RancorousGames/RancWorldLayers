@@ -22,6 +22,34 @@ void FQuadtree::Insert(const FIntPoint& Point)
 	}
 }
 
+bool FQuadtree::Remove(const FIntPoint& Point)
+{
+	return RemoveFromNode(Root.Get(), Point);
+}
+
+bool FQuadtree::RemoveFromNode(FQuadtreeNode* Node, const FIntPoint& Point)
+{
+	if (!Node->Bounds.IsInside(FVector2D(Point.X, Point.Y)))
+	{
+		return false;
+	}
+
+	// If we are a leaf node, try to remove the point directly
+	if (Node->Children[0] == nullptr)
+	{
+		int32 RemovedCount = Node->Points.Remove(Point);
+		return RemovedCount > 0;
+	}
+
+	// Otherwise, recurse down to the correct child
+	int32 ChildIndex = GetChildIndexForPoint(Node, Point);
+	if (Node->Children[ChildIndex])
+	{
+		return RemoveFromNode(Node->Children[ChildIndex].Get(), Point);
+	}
+	return false;
+}
+
 bool FQuadtree::FindNearest(const FIntPoint& SearchPoint, float MaxSearchRadius, FIntPoint& OutNearestPoint) const
 {
 	float MinDistanceSq = MaxSearchRadius * MaxSearchRadius;
