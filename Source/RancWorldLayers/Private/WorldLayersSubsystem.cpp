@@ -8,6 +8,49 @@
 #include "WorldDataVolume.h"
 #include "Spatial/Quadtree.h"
 
+void UWorldLayersSubsystem::InitializeFromVolume(AWorldDataVolume* Volume)
+{
+	// Clear any previously existing data
+	WorldDataLayers.Empty();
+	
+	if (Volume)
+	{
+		WorldDataVolume = Volume;
+		const FBox VolumeBounds = Volume->GetBounds().GetBox();
+		WorldGridOrigin = FVector2D(VolumeBounds.Min.X, VolumeBounds.Min.Y);
+		WorldGridSize = FVector2D(VolumeBounds.GetSize().X, VolumeBounds.GetSize().Y);
+
+		if (WorldGridSize.X <= 0 || WorldGridSize.Y <= 0) // Using <= for robustness
+		{
+			// The bounds are invalid, likely from a programmatically spawned volume.
+			// Recalculate both size and origin from the actor's transform.
+			WorldGridSize = FVector2D(Volume->GetActorTransform().GetScale3D().X * 100.0f, Volume->GetActorTransform().GetScale3D().Y * 100.0f);
+			
+			// THE FIX: Also correct the origin based on the new size and the volume's location.
+			// A volume's bounds are centered on its actor location.
+			const FVector2D Center(Volume->GetActorLocation().X, Volume->GetActorLocation().Y);
+			WorldGridOrigin = Center - (WorldGridSize * 0.5f);
+		}
+
+		// Load and register all layers specified in the volume
+		for (const TSoftObjectPtr<UWorldDataLayerAsset>& LayerAssetPtr : Volume->LayerAssets)
+		{
+			if (UWorldDataLayerAsset* LayerAsset = LayerAssetPtr.LoadSynchronous())
+			{
+				RegisterDataLayer(LayerAsset);
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UWorldLayersSubsystem: InitializeFromVolume called with a null Volume. Subsystem will be inactive."));
+		WorldDataVolume = nullptr;
+		WorldGridOrigin = FVector2D::ZeroVector;
+		WorldGridSize = FVector2D::ZeroVector;
+	}
+}
+
+
 void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
@@ -21,31 +64,14 @@ void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			FoundVolume = *It;
 			break; // Find the first one
 		}
-
-		if (FoundVolume)
-		{
-			WorldDataVolume = FoundVolume;
-			const FBox VolumeBounds = FoundVolume->GetBounds().GetBox();
-			WorldGridOrigin = FVector2D(VolumeBounds.Min.X, VolumeBounds.Min.Y);
-			WorldGridSize = FVector2D(VolumeBounds.GetSize().X, VolumeBounds.GetSize().Y);
-
-			// Load and register all layers specified in the volume
-			for (const TSoftObjectPtr<UWorldDataLayerAsset>& LayerAssetPtr : FoundVolume->LayerAssets)
-			{
-				if (UWorldDataLayerAsset* LayerAsset = LayerAssetPtr.LoadSynchronous())
-				{
-					RegisterDataLayer(LayerAsset);
-				}
-			}
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("UWorldLayersSubsystem: No AWorldDataVolume found in the world. Subsystem will be inactive."));
-		}
+		
+		// FIX: Call the new explicit initializer. This keeps runtime behavior the same.
+		InitializeFromVolume(FoundVolume);
 	}
 
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UWorldLayersSubsystem::Tick));
 }
+
 
 void UWorldLayersSubsystem::Deinitialize()
 {
@@ -448,7 +474,18 @@ FIntPoint UWorldLayersSubsystem::WorldLocationToPixel(const FVector2D& WorldLoca
 	int32 PixelX;
 	int32 PixelY;
 
-	const FVector2D CellSize = FVector2D(WorldGridSize.X / DataLayer->Resolution.X, WorldGridSize.Y / DataLayer->Resolution.Y);
+	FVector2D CellSize;
+	// FIX: Use the authoritative CellSize for each resolution mode to avoid precision errors.
+	if (DataLayer->Config->ResolutionMode == EResolutionMode::RelativeToWorld)
+	{
+		// For relative mode, the asset's CellSize is the source of truth.
+		CellSize = DataLayer->Config->CellSize;
+	}
+	else // Absolute Mode
+	{
+		// For absolute mode, the cell size is derived from the total grid size and fixed resolution.
+		CellSize = FVector2D(WorldGridSize.X / DataLayer->Resolution.X, WorldGridSize.Y / DataLayer->Resolution.Y);
+	}
 
 	PixelX = FMath::FloorToInt(RelativeLocation.X / CellSize.X);
 	PixelY = FMath::FloorToInt(RelativeLocation.Y / CellSize.Y);

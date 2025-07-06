@@ -93,6 +93,10 @@ FLinearColor UWorldDataLayer::GetValueAtPixel(const FIntPoint& PixelCoords) cons
 	}
 }
 
+// Source/RancWorldLayers/Private/WorldDataLayer.cpp
+
+// Source/RancWorldLayers/Private/WorldDataLayer.cpp
+
 void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinearColor& NewValue)
 {
 	if (!RawData.IsValidIndex(GetPixelIndex(PixelCoords)))
@@ -100,8 +104,17 @@ void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinea
 		return; // Out of bounds
 	}
 
-	int32 PixelIndex = GetPixelIndex(PixelCoords);
+	const bool bShouldUpdateIndex = Config->SpatialOptimization.bBuildAccelerationStructure && !SpatialIndices.IsEmpty();
+	FLinearColor OldValue;
 
+	if (bShouldUpdateIndex)
+	{
+		OldValue = GetValueAtPixel(PixelCoords);
+		// A simple check is not sufficient due to data format quantization. We must proceed.
+	}
+
+	// --- Modify the Raw Data ---
+	int32 PixelIndex = GetPixelIndex(PixelCoords);
 	switch (Config->DataFormat)
 	{
 		case EDataFormat::R8:
@@ -126,14 +139,48 @@ void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinea
 
 	bIsDirty = true;
 
-	// Update Spatial Index if configured
-	if (Config->SpatialOptimization.bBuildAccelerationStructure && !SpatialIndices.IsEmpty())
+	// --- Update Spatial Indices with Format-Aware Comparison ---
+	if (bShouldUpdateIndex)
 	{
-		// This is a naive implementation that only adds points.
-		// A more robust solution would also need to remove the point from its previous value's quadtree.
+		// Remove the point from the quadtree for the OLD value.
 		for (const auto& Elem : SpatialIndices)
 		{
-			if (NewValue.Equals(Elem.Key, KINDA_SMALL_NUMBER))
+			bool bMatches = false;
+			switch(Config->DataFormat)
+			{
+				case EDataFormat::R8:
+				case EDataFormat::R16F:
+					// For single-channel formats, compare only the R channel.
+					bMatches = FMath::IsNearlyEqual(OldValue.R, Elem.Key.R);
+					break;
+				default:
+					// For multi-channel formats, the read-back OldValue is canonical.
+					bMatches = OldValue.Equals(Elem.Key, KINDA_SMALL_NUMBER);
+					break;
+			}
+			if (bMatches)
+			{
+				Elem.Value->Remove(PixelCoords);
+				break;
+			}
+		}
+
+		// Add the point to the quadtree for the NEW value.
+		for (const auto& Elem : SpatialIndices)
+		{
+			bool bMatches = false;
+			switch(Config->DataFormat)
+			{
+				case EDataFormat::R8:
+				case EDataFormat::R16F:
+					// Compare the R channel of the incoming value with the tracked key's R channel.
+					bMatches = FMath::IsNearlyEqual(NewValue.R, Elem.Key.R);
+					break;
+				default:
+					bMatches = NewValue.Equals(Elem.Key, KINDA_SMALL_NUMBER);
+					break;
+			}
+			if (bMatches)
 			{
 				Elem.Value->Insert(PixelCoords);
 				break;

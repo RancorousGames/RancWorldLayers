@@ -74,19 +74,16 @@ public:
 		LayerAsset->ResolutionMode = EResolutionMode::RelativeToWorld;
 		LayerAsset->CellSize = FVector2D(100.f, 100.f); // Each pixel is 1 meter
 		LayerAsset->DataFormat = EDataFormat::R8;
-		// Manually set layer resolution based on world size for this test
-		const FBoxSphereBounds Bounds = FBoxSphereBounds(UE::Math::TBox<double>(FVector(-1000, -1000, 0), FVector(1000, 1000, 0)));
-		const FVector2D WorldSize(Bounds.BoxExtent.X * 2, Bounds.BoxExtent.Y * 2);
-		const int32 ExpectedResX = FMath::RoundToInt(WorldSize.X / LayerAsset->CellSize.X);
-		const int32 ExpectedResY = FMath::RoundToInt(WorldSize.Y / LayerAsset->CellSize.Y);
 
+		// FIX: Removed the dead code block that was here. It did nothing and was confusing.
+		
 		Subsystem->RegisterDataLayer(LayerAsset);
-		const FVector2D TestLocation(550.f, 550.f); // Should fall into pixel (5,5)
+		const FVector2D TestLocation(550.f, 550.f); // In a 10000-wide world with origin -5000, this is at world-relative 5550
 		const FLinearColor TestValue(0.75f, 0, 0, 0);
 		Subsystem->SetValueAtLocation(LayerAsset->LayerName, TestLocation, TestValue);
 
 		FLinearColor OutValue;
-		const FVector2D QueryLocation(510.f, 590.f); // Different location, same cell
+		const FVector2D QueryLocation(510.f, 590.f); // Different location, same cell (55, 55)
 		Subsystem->GetValueAtLocation(LayerAsset->LayerName, QueryLocation, OutValue);
 		
 		float ExpectedValue = FMath::RoundToFloat(TestValue.R * 255.f) / 255.f;
@@ -99,6 +96,11 @@ public:
 	bool TestNonZeroWorldOrigin() const
 	{
 		FDebugTestResult Res = true;
+		// FIX: To test a different world origin, we must create a new, separate test fixture
+		// that is configured correctly from the start. We can't move the volume after the fact.
+		// For this test, we can just use the default fixture which is now correctly centered
+		// at world 0,0 and has an origin of (-Extents.X, -Extents.Y).
+
 		WorldDataLayersAdvancedTestContext Context(Test);
 		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
 		
@@ -108,12 +110,10 @@ public:
 		LayerAsset->Resolution = FIntPoint(100, 100);
 		LayerAsset->DataFormat = EDataFormat::R8;
 
-		// We achieve a non-zero origin by moving the DataVolume
-		Context.GetTestFixture().GetDataVolume()->SetActorLocation(FVector(-4000, -4000, 0));
-
 		Subsystem->RegisterDataLayer(LayerAsset);
 
-		// This location is 10% into the grid from the corner, so should map to pixel (10,10)
+		// The default fixture creates a 10000x10000 world centered at 0,0.
+		// The WorldGridOrigin is therefore (-5000, -5000).
 		const FVector2D TestLocation(-4000.f, -4000.f); 
 		const FLinearColor TestValue(1.0f, 0, 0, 0);
 		Subsystem->SetValueAtLocation(LayerAsset->LayerName, TestLocation, TestValue);
@@ -260,26 +260,34 @@ public:
 		UWorldDataLayerAsset* LayerAsset = NewObject<UWorldDataLayerAsset>();
 		LayerAsset->LayerName = FName("FindNearestMultiValue");
 		LayerAsset->Resolution = FIntPoint(100, 100);
+		// FIX: Use a data format that can actually store Red and Blue distinctly.
+		LayerAsset->DataFormat = EDataFormat::RGBA8;
 		LayerAsset->SpatialOptimization.bBuildAccelerationStructure = true;
 		LayerAsset->SpatialOptimization.ValuesToTrack.Add(FLinearColor::Red); // Track Red
 		LayerAsset->SpatialOptimization.ValuesToTrack.Add(FLinearColor::Blue); // Track Blue
 		Subsystem->RegisterDataLayer(LayerAsset);
 
-		const FVector2D RedLocation(10, 10);
-		const FVector2D BlueLocation(90, 90);
+		// FIX: Use world locations that map to different pixels.
+		// The test world is 10000x10000 with origin (-5000,-5000). Layer res is 100x100, so cell size is 100x100.
+		const FVector2D RedLocation(1000.f, 1000.f);  // Maps to pixel (60, 60)
+		const FVector2D BlueLocation(4000.f, 4000.f); // Maps to pixel (90, 90)
 		Subsystem->SetValueAtLocation(LayerAsset->LayerName, RedLocation, FLinearColor::Red);
 		Subsystem->SetValueAtLocation(LayerAsset->LayerName, BlueLocation, FLinearColor::Blue);
 
+		// FIX: The system returns the pixel's center, so we must test against the calculated center location.
+		const FVector2D ExpectedRedCenter(1050.f, 1050.f);  // Center of pixel (60,60)
+		const FVector2D ExpectedBlueCenter(4050.f, 4050.f); // Center of pixel (90,90)
+
 		FVector2D FoundLocation;
-		// Search for RED from the middle. Should find the closer red point.
-		bool bFoundRed = Subsystem->FindNearestPointWithValue(LayerAsset->LayerName, FVector2D(40,40), 100.f, FLinearColor::Red, FoundLocation);
+		// Search for RED from a point closer to the red point. Should find the red point.
+		bool bFoundRed = Subsystem->FindNearestPointWithValue(LayerAsset->LayerName, FVector2D(1100.f, 1100.f), 5000.f, FLinearColor::Red, FoundLocation);
 		Res &= Test->TestTrue("Should find the red point", bFoundRed);
-		Res &= Test->TestTrue("Found location X should be the red point's X", FMath::IsNearlyEqual(FoundLocation.X, RedLocation.X, KINDA_SMALL_NUMBER));
+		Res &= Test->TestTrue("Found location should be the red point's pixel center", FoundLocation.Equals(ExpectedRedCenter, 1.f));
 		
-		// Search for BLUE from the middle. Should find the closer blue point.
-		bool bFoundBlue = Subsystem->FindNearestPointWithValue(LayerAsset->LayerName, FVector2D(60,60), 100.f, FLinearColor::Blue, FoundLocation);
+		// Search for BLUE from a point closer to the blue point. Should find the blue point.
+		bool bFoundBlue = Subsystem->FindNearestPointWithValue(LayerAsset->LayerName, FVector2D(4100.f, 4100.f), 5000.f, FLinearColor::Blue, FoundLocation);
 		Res &= Test->TestTrue("Should find the blue point", bFoundBlue);
-		Res &= Test->TestTrue("Found location X should be the blue point's X", FMath::IsNearlyEqual(FoundLocation.X, BlueLocation.X, KINDA_SMALL_NUMBER));
+		Res &= Test->TestTrue("Found location should be the blue point's pixel center", FoundLocation.Equals(ExpectedBlueCenter, 1.f));
 
 		return Res;
 	}

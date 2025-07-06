@@ -25,6 +25,9 @@ public:
 	virtual void Deinitialize() override;
 	bool Tick(float DeltaTime);
 
+	// FIX: Add a public, explicit initializer for test environments
+	void InitializeFromVolume(AWorldDataVolume* Volume);
+
 	static UWorldLayersSubsystem* Get(UObject* WorldContext);
 
 	// Generic Query Methods - The Core API

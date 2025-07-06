@@ -8,6 +8,8 @@
 #include "WorldDataLayerAsset.h"
 #include "WorldDataVolume.h"
 #include "Engine/BrushBuilder.h"
+#include "Builders/CubeBuilder.h" // <-- FIX: Add this include for the concrete builder
+#include "Components/BrushComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
@@ -69,22 +71,24 @@ public:
 	{
 		World = CreateTestWorld(TestName);
 		
-		// Spawn and configure the AWorldDataVolume, which now drives the subsystem
 		DataVolume = World->SpawnActor<AWorldDataVolume>();
-		DataVolume->SetActorLocation(FVector(InWorldBounds.X / 2.0, InWorldBounds.Y / 2.0, 0));
-		DataVolume->SetActorScale3D(FVector(InWorldBounds.X / 100.0, InWorldBounds.Y / 100.0, 100.0)); // Scale is in brush units (200cm)
-		DataVolume->BrushBuilder->Build(World, DataVolume);
+		
+		DataVolume->SetActorLocation(FVector::ZeroVector);
 
-		// Get the subsystem, which will now initialize from the volume
+		DataVolume->GetBrushComponent()->SetWorldScale3D(FVector(InWorldBounds.X / 100.0f, InWorldBounds.Y / 100.0f, 1.0f));
+		
+		// FIX: Reorder initialization. Get the subsystem first.
 		Subsystem = EnsureSubsystem(World, TestName);
 		
-		// Now create and register the test layer via the volume
-		CreateAndRegisterTestLayer();
+		// Initialize the subsystem's world bounds from the volume. No layers will be loaded here, which is correct for our test setup.
+		Subsystem->InitializeFromVolume(DataVolume);
+
+		// FIX: Now that the subsystem is valid, create and register the default test layer.
+		CreateTestLayerAsset();
 	}
 
 	~FRancWorldLayersTestFixture()
 	{
-		// Clean up if needed; note that in many tests the engine will tear down the world.
 		if (World)
 		{
 			World->DestroyWorld(false);
@@ -97,11 +101,11 @@ public:
 	AWorldDataVolume* GetDataVolume() const { return DataVolume; }
 
 private:
-	void CreateAndRegisterTestLayer()
+	void CreateTestLayerAsset()
 	{
-		if (!Subsystem || !DataVolume) return;
+		// FIX: The guard clause now works correctly as Subsystem is initialized.
+		if (!Subsystem) return;
 
-		// The asset is now stored in our member variable
 		TestLayerAsset = NewObject<UWorldDataLayerAsset>();
 		TestLayerAsset->LayerName = FName("TestLayer");
 		TestLayerAsset->ResolutionMode = EResolutionMode::Absolute;
@@ -110,15 +114,15 @@ private:
 		TestLayerAsset->DefaultValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
 		TestLayerAsset->bAllowPNG_IO = true;
 
-		// Add the asset to the volume's list and re-initialize the subsystem
-		DataVolume->LayerAssets.Add(TestLayerAsset);
+		// FIX: Directly register the transient asset. Do not add it to the Volume's TSoftObjectPtr array.
+		// This ensures the WorldDataLayers map is populated for the tests.
 		Subsystem->RegisterDataLayer(TestLayerAsset);
 	}
 	
 	UWorld* World = nullptr;
 	UWorldLayersSubsystem* Subsystem = nullptr;
 	AWorldDataVolume* DataVolume = nullptr;
-	UPROPERTY() // UPROPERTY to prevent garbage collection
+	UPROPERTY()
 	TObjectPtr<UWorldDataLayerAsset> TestLayerAsset = nullptr;
 };
 

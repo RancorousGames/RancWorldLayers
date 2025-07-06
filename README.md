@@ -27,6 +27,76 @@ This architecture is built on three core philosophical pillars:
 
 ---
 
+Of course. Here is a concise Quickstart Guide formatted in Markdown, ready to be pasted directly into your `README.md` file.
+
+---
+
+## Quickstart Guide: Your First Data Layer in 5 Minutes
+
+This guide will walk you through creating your first data layer, visualizing it, and modifying it from a Blueprint.
+
+### 1. Define the World Bounds
+
+The system needs to know what area of your world to manage.
+
+1.  From the **Place Actors** panel, find `AWorldDataVolume` and drag it into your level.
+2.  **Scale the volume** to encompass your entire playable area. The system will use these bounds as the 0,0 to max,max mapping for all its data layers.
+
+
+
+### 2. Create the Layer Asset
+
+This asset is the "blueprint" for your data layer.
+
+1.  In the **Content Browser**, right-click and go to **Miscellaneous -> World Data Layer**.
+2.  Name the new asset `DA_Height`.
+3.  Open `DA_Height` and configure its core properties:
+    *   **Layer Name**: `Height` (This is the name you'll use in code/Blueprints).
+    *   **Resolution Mode**: `Absolute`
+    *   **Resolution**: `X: 512`, `Y: 512`
+    *   **Data Format**: `R8` (A single 8-bit channel, perfect for simple grayscale values).
+4.  Save the asset.
+
+### 3. Link the Layer to the World
+
+Tell the `AWorldDataVolume` to load your new layer.
+
+1.  Select the `AWorldDataVolume` in your level.
+2.  In the **Details** panel, find the **Layer Assets** array.
+3.  Click the **+** icon to add an element, and select your `DA_Height` asset from the dropdown.
+
+
+
+### 4. Visualize the Data
+
+Let's see the layer in action.
+
+1.  From the **Place Actors** panel, find `BP_WorldLayersDebugActor` and drag it into your level.
+2.  Press **Play (PIE)**.
+3.  A debug widget will appear in the top-left corner. Select **"Height"** from the dropdown. You should see a solid black square, representing the layer's default value of 0.
+
+### 5. Modify and Query the Data
+
+Let's "paint" a value into the layer and then read it back.
+
+1.  Create a new **Actor Blueprint**, name it `BP_DataPainter`.
+2.  Open `BP_DataPainter` and go to the **Event Graph**.
+3.  Recreate the following Blueprint logic:
+    *   On **Event Begin Play**, we get the subsystem, set a value of `1.0` (white) at our actor's location, and then immediately query the value at that same location to print it.
+
+    
+
+4.  Place one or more `BP_DataPainter` actors into your level.
+
+### 6. See the Result!
+
+Press **Play** again. You should now see:
+
+*   The **Debug Widget** for the "Height" layer now has white pixels where your `BP_DataPainter` actors are located.
+*   The **Output Log** will show "Value at location is: 1.000", confirming the data was written and read back successfully.
+
+Congratulations! You have successfully set up, modified, and queried a world data layer. From here, you can explore more complex data formats, use the data in materials, drive PCG, or inform AI decisions.
+
 ## 2. System Architecture
 
 ### 2.1. The Duality Model: Editor vs. Runtime
