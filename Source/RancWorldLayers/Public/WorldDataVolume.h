@@ -34,4 +34,7 @@ public:
 	/** Defines how queries for locations outside the volume's bounds are handled. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Data")
 	EOutOfBoundsBehavior OutOfBoundsBehavior = EOutOfBoundsBehavior::ReturnDefaultValue;
+
+protected:
+	virtual bool ShouldCheckCollisionComponentForErrors() const override;
 };

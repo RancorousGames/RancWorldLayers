@@ -12,4 +12,16 @@ AWorldDataVolume::AWorldDataVolume()
 #endif
 
 	bIsEditorOnlyActor = false;
+	
+	bColored = true;
+	BrushColor.R = 25;
+	BrushColor.G = 255;
+	BrushColor.B = 25;
+	BrushColor.A = 255;
+
+}
+
+bool AWorldDataVolume::ShouldCheckCollisionComponentForErrors() const
+{
+	return false;
 }

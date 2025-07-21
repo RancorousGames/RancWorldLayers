@@ -31,7 +31,7 @@ Of course. Here is a concise Quickstart Guide formatted in Markdown, ready to be
 
 ---
 
-## Quickstart Guide: Your First Data Layer in 5 Minutes
+## Quickstart Guide:
 
 This guide will walk you through creating your first data layer, visualizing it, and modifying it from a Blueprint.
 
