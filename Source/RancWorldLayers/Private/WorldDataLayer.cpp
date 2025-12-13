@@ -105,7 +105,7 @@ void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinea
 	}
 
 	const bool bShouldUpdateIndex = Config->SpatialOptimization.bBuildAccelerationStructure && !SpatialIndices.IsEmpty();
-	FLinearColor OldValue;
+	FLinearColor OldValue = FLinearColor::Black;
 
 	if (bShouldUpdateIndex)
 	{

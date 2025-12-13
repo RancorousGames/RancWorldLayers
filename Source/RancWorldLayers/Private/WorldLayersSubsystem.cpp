@@ -5,6 +5,7 @@
 #include "RHICommandList.h"
 #include "WorldDataLayerAsset.h"
 #include "DynamicRHI.h"
+#include "RHIResources.h"
 #include "WorldDataVolume.h"
 #include "Spatial/Quadtree.h"
 
@@ -331,7 +332,7 @@ void UWorldLayersSubsystem::SyncCPUToGPU(UWorldDataLayer* DataLayer)
 	[TextureResource, Width, Height, Stride, RawDataCopy](FRHICommandListImmediate& RHICmdList)
 	{
 		FUpdateTextureRegion2D UpdateRegion(0, 0, 0, 0, Width, Height);
-		FTexture2DRHIRef Texture2DRHI = TextureResource->GetTexture2DRHI();
+		FRHITexture* Texture2DRHI = TextureResource->GetTextureRHI();
 		if (Texture2DRHI)
 		{
 			RHICmdList.UpdateTexture2D(Texture2DRHI, 0, UpdateRegion, Stride, RawDataCopy.GetData());
