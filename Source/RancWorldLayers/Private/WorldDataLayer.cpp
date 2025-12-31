@@ -34,7 +34,11 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 		const int32 TexWidth = Texture->GetSizeX();
 		const int32 TexHeight = Texture->GetSizeY();
 		
-		// Map the texture to our resolution
+		UE_LOG(LogTemp, Log, TEXT("WorldDataLayer: Initializing '%s' from texture '%s' (%dx%d). Format: %d"), 
+			*Config->LayerName.ToString(), *Texture->GetName(), TexWidth, TexHeight, (int32)Texture->GetPixelFormat());
+
+		// Ensure we can read the data. 
+		// Note: Requires texture to be Uncompressed (RGBA8) or similar.
 		const FColor* FormattedData = reinterpret_cast<const FColor*>(Texture->GetPlatformData()->Mips[0].BulkData.LockReadOnly());
 		if (FormattedData)
 		{
@@ -42,7 +46,6 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 			{
 				for (int32 X = 0; X < Resolution.X; ++X)
 				{
-					// Simple coordinate mapping (nearest neighbor)
 					int32 TexX = FMath::Clamp(FMath::RoundToInt((float)X / (float)Resolution.X * (float)TexWidth), 0, TexWidth - 1);
 					int32 TexY = FMath::Clamp(FMath::RoundToInt((float)Y / (float)Resolution.Y * (float)TexHeight), 0, TexHeight - 1);
 					
@@ -51,6 +54,11 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 				}
 			}
 			Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
+			UE_LOG(LogTemp, Log, TEXT("WorldDataLayer: Successfully populated '%s' from texture."), *Config->LayerName.ToString());
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("WorldDataLayer: Failed to lock texture data for '%s'. Ensure texture Compression is set to UserInterface2D or VectorDisplacementMap."), *Config->LayerName.ToString());
 		}
 	}
 
