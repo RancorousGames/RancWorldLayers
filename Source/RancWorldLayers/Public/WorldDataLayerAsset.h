@@ -34,7 +34,7 @@ struct FWorldDataLayerDebugVisualization
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "Debug Visualization")
-	EWorldDataLayerVisualizationMode VisualizationMode;
+	EWorldDataLayerVisualizationMode VisualizationMode = EWorldDataLayerVisualizationMode::Grayscale;
 
 	UPROPERTY(EditAnywhere, Category = "Debug Visualization")
 	TSoftObjectPtr<UCurveLinearColor> ColorCurve;
@@ -52,10 +52,10 @@ struct FWorldDataLayerSpatialOptimization
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "Spatial Optimization")
-	bool bBuildAccelerationStructure;
+	bool bBuildAccelerationStructure = false;
 
 	UPROPERTY(EditAnywhere, Category = "Spatial Optimization", meta = (EditCondition = "bBuildAccelerationStructure"))
-	EWorldDataLayerStructureType StructureType;
+	EWorldDataLayerStructureType StructureType = EWorldDataLayerStructureType::Quadtree;
 
 	UPROPERTY(EditAnywhere, Category = "Spatial Optimization", meta = (EditCondition = "bBuildAccelerationStructure"))
 	TArray<FLinearColor> ValuesToTrack;
@@ -75,16 +75,16 @@ struct FWorldDataLayerGPUConfiguration
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, Category = "GPU Configuration")
-	bool bKeepUpdatedOnGPU;
+	bool bKeepUpdatedOnGPU = false;
 
 	UPROPERTY(EditAnywhere, Category = "GPU Configuration")
-	bool bIsGPUWritable;
+	bool bIsGPUWritable = false;
 
 	UPROPERTY(EditAnywhere, Category = "GPU Configuration", meta = (EditCondition = "bIsGPUWritable"))
-	EWorldDataLayerReadbackBehavior ReadbackBehavior;
+	EWorldDataLayerReadbackBehavior ReadbackBehavior = EWorldDataLayerReadbackBehavior::None;
 
 	UPROPERTY(EditAnywhere, Category = "GPU Configuration", meta = (EditCondition = "bIsGPUWritable"))
-	float PeriodicReadbackSeconds;
+	float PeriodicReadbackSeconds = 0.0f;
 
 	UPROPERTY(EditAnywhere, Category = "GPU Configuration")
 	TSoftObjectPtr<class UNiagaraSystem> AssociatedNiagaraSystem;
