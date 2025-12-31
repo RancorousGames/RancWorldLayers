@@ -3,6 +3,8 @@
 #include "NiagaraSystem.h"
 #include "WorldDataLayerAsset.generated.h"
 
+class UTexture2D;
+
 UENUM()
 enum class EResolutionMode : uint8
 {
