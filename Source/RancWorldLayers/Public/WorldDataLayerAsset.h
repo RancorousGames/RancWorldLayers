@@ -123,6 +123,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
 	FLinearColor DefaultValue;
 
+	/** Optional texture to populate the layer with initial data. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
+	TSoftObjectPtr<UTexture2D> InitialDataTexture;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Editor & Debugging")
 	bool bAllowPNG_IO;
 

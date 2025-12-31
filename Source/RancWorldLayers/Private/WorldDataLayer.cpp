@@ -1,5 +1,7 @@
 #include "WorldDataLayer.h"
 #include "Spatial/Quadtree.h"
+#include "Engine/Texture2D.h"
+#include "TextureResource.h"
 
 void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D& InWorldGridSize)
 {
@@ -17,12 +19,38 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 	int32 BytesPerPixel = GetBytesPerPixel();
 	RawData.SetNumZeroed(Resolution.X * Resolution.Y * BytesPerPixel);
 
-	// Initialize with DefaultValue
+	// 1. Initialize with DefaultValue
 	for (int32 Y = 0; Y < Resolution.Y; ++Y)
 	{
 		for (int32 X = 0; X < Resolution.X; ++X)
 		{
 			SetValueAtPixel(FIntPoint(X, Y), Config->DefaultValue);
+		}
+	}
+
+	// 2. Override with InitialDataTexture if provided
+	if (UTexture2D* Texture = Config->InitialDataTexture.LoadSynchronous())
+	{
+		const int32 TexWidth = Texture->GetSizeX();
+		const int32 TexHeight = Texture->GetSizeY();
+		
+		// Map the texture to our resolution
+		const FColor* FormattedData = reinterpret_cast<const FColor*>(Texture->GetPlatformData()->Mips[0].BulkData.LockReadOnly());
+		if (FormattedData)
+		{
+			for (int32 Y = 0; Y < Resolution.Y; ++Y)
+			{
+				for (int32 X = 0; X < Resolution.X; ++X)
+				{
+					// Simple coordinate mapping (nearest neighbor)
+					int32 TexX = FMath::Clamp(FMath::RoundToInt((float)X / (float)Resolution.X * (float)TexWidth), 0, TexWidth - 1);
+					int32 TexY = FMath::Clamp(FMath::RoundToInt((float)Y / (float)Resolution.Y * (float)TexHeight), 0, TexHeight - 1);
+					
+					FColor TexColor = FormattedData[TexY * TexWidth + TexX];
+					SetValueAtPixel(FIntPoint(X, Y), FLinearColor::FromSRGBColor(TexColor));
+				}
+			}
+			Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
 		}
 	}
 

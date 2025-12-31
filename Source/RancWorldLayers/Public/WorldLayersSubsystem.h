@@ -16,7 +16,7 @@ class AWorldDataVolume;
 #include "WorldLayersSubsystem.generated.h"
 
 UCLASS()
-class RANCWORLDLAYERS_API UWorldLayersSubsystem : public UGameInstanceSubsystem
+class RANCWORLDLAYERS_API UWorldLayersSubsystem : public UWorldSubsystem
 {
 	GENERATED_BODY()
 
@@ -28,7 +28,7 @@ public:
 	// FIX: Add a public, explicit initializer for test environments
 	void InitializeFromVolume(AWorldDataVolume* Volume);
 
-	static UWorldLayersSubsystem* Get(UObject* WorldContext);
+	static UWorldLayersSubsystem* Get(const UObject* WorldContext);
 
 	// Generic Query Methods - The Core API
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
@@ -58,6 +58,11 @@ public:
 	void ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
 	void ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
 
+	// Public access for external tools (e.g. PCG nodes)
+	const UWorldDataLayer* GetDataLayer(FName LayerName) const { return WorldDataLayers.FindRef(LayerName); }
+	FIntPoint WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* Layer) const;
+	FVector2D PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* Layer) const;
+
 private:
 	UPROPERTY()
 	TMap<FName, UWorldDataLayer*> WorldDataLayers;
@@ -72,7 +77,4 @@ private:
 
 	void SyncCPUToGPU(UWorldDataLayer* DataLayer);
 	void ReadbackTexture(UWorldDataLayer* DataLayer);
-
-	FIntPoint WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* Layer) const;
-	FVector2D PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* Layer) const;
 };

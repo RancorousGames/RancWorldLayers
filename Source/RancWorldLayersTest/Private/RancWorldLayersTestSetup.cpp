@@ -46,21 +46,8 @@ static UWorld* CreateTestWorld(const FName& WorldName)
 
 static UWorldLayersSubsystem* EnsureSubsystem(UWorld* World, const FName& TestName)
 {
-	if (!World)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("World is null in EnsureSubsystem."));
-		return nullptr;
-	}
-
-	UGameInstance* GameInstance = World->GetGameInstance();
-	if (!GameInstance)
-	{
-		GameInstance = NewObject<UGameInstance>(World);
-		World->SetGameInstance(GameInstance);
-		GameInstance->Init();
-	}
-
-	return GameInstance->GetSubsystem<UWorldLayersSubsystem>();
+	if (!World) return nullptr;
+	return World->GetSubsystem<UWorldLayersSubsystem>();
 }
 
 // Test fixture that sets up the persistent test world and subsystem

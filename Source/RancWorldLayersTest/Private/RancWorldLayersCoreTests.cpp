@@ -6,6 +6,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
+#undef TestName
 #define TestName "GameTests.RancWorldLayers.Core"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRancWorldLayersCoreTest, TestName,

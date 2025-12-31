@@ -56,19 +56,22 @@ void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	// On initialization, find the AWorldDataVolume in the world to configure the subsystem.
-	if (UWorld* World = GetWorld())
+	UWorld* World = GetWorld();
+	if (!World || World->IsNetMode(NM_DedicatedServer) || World->HasAnyFlags(RF_ClassDefaultObject))
 	{
-		AWorldDataVolume* FoundVolume = nullptr;
-		for (TActorIterator<AWorldDataVolume> It(World); It; ++It)
-		{
-			FoundVolume = *It;
-			break; // Find the first one
-		}
-		
-		// FIX: Call the new explicit initializer. This keeps runtime behavior the same.
-		InitializeFromVolume(FoundVolume);
+		return;
 	}
+
+	// On initialization, find the AWorldDataVolume in the world to configure the subsystem.
+	AWorldDataVolume* FoundVolume = nullptr;
+	for (TActorIterator<AWorldDataVolume> It(World); It; ++It)
+	{
+		FoundVolume = *It;
+		break; // Find the first one
+	}
+	
+	// FIX: Call the new explicit initializer. This keeps runtime behavior the same.
+	InitializeFromVolume(FoundVolume);
 
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UWorldLayersSubsystem::Tick));
 }
@@ -76,7 +79,10 @@ void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UWorldLayersSubsystem::Deinitialize()
 {
-	FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+	if (TickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+	}
 	WorldDataLayers.Empty();
 	Super::Deinitialize();
 }
@@ -114,33 +120,13 @@ bool UWorldLayersSubsystem::Tick(float DeltaTime)
 	return true;
 }
 
-UWorldLayersSubsystem* UWorldLayersSubsystem::Get(UObject* WorldContext)
+UWorldLayersSubsystem* UWorldLayersSubsystem::Get(const UObject* WorldContext)
 {
-	if (!WorldContext)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("WorldContext is null in UMyWorldDataSubsystem::Get."));
-		return nullptr;
-	}
-
-	auto* World = WorldContext->GetWorld();
-	UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
-	if (!GameInstance)
-	{
-		if (!World->IsEditorWorld())
-			UE_LOG(LogTemp, Warning, TEXT("GameInstance is null in UMyWorldDataSubsystem::Get."));
-		return nullptr;
-	}
-
-	UWorldLayersSubsystem* Subsystem = GameInstance->GetSubsystem<UWorldLayersSubsystem>();
-	if (!Subsystem)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("UMyWorldDataSubsystem is not found, but it should have been automatically created."));
-	}
-
-	return Subsystem;
+	if (!WorldContext) return nullptr;
+	UWorld* World = WorldContext->GetWorld();
+	if (!World) return nullptr;
+	return World->GetSubsystem<UWorldLayersSubsystem>();
 }
-
-
 
 bool UWorldLayersSubsystem::GetValueAtLocation(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const
 {
