@@ -27,6 +27,9 @@ class RANCWORLDLAYERS_API AWorldDataVolume : public AVolume
 public:
 	AWorldDataVolume();
 
+	virtual void PostActorCreated() override;
+	virtual void PostLoad() override;
+
 	/** The list of all World Data Layer Assets that should be loaded and managed for this level. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Data")
 	TArray<TSoftObjectPtr<UWorldDataLayerAsset>> LayerAssets;

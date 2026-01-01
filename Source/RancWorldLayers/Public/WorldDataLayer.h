@@ -16,6 +16,8 @@ public:
 	UPROPERTY()
 	TObjectPtr<UWorldDataLayerAsset> Config;
 
+	bool bIsInitializing = false;
+
 	UPROPERTY()
 	FIntPoint Resolution;
 

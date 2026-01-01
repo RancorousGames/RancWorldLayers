@@ -146,6 +146,81 @@ public:
 
 		return Res;
 	}
+
+	bool TestMultipleVolumeWarning() const
+	{
+		FDebugTestResult Res = true;
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
+		UWorld* World = Context.GetWorld();
+
+		// Create a second volume
+		AWorldDataVolume* SecondVolume = World->SpawnActor<AWorldDataVolume>();
+		
+		// Expect a warning when initializing from a second volume
+		Test->AddExpectedError(TEXT("already has a registered WorldDataVolume"), EAutomationExpectedErrorFlags::Contains, 1);
+		
+		Subsystem->InitializeFromVolume(SecondVolume);
+
+		return Res;
+	}
+
+	bool TestOutOfBoundsDefaultValue() const
+	{
+		FDebugTestResult Res = true;
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
+
+		// Create a layer with a specific default value
+		UWorldDataLayerAsset* DefaultLayerAsset = NewObject<UWorldDataLayerAsset>();
+		DefaultLayerAsset->LayerName = FName("DefaultValueLayer");
+		DefaultLayerAsset->ResolutionMode = EResolutionMode::Absolute;
+		DefaultLayerAsset->Resolution = FIntPoint(10, 10);
+		DefaultLayerAsset->DataFormat = EDataFormat::R8;
+		DefaultLayerAsset->DefaultValue = FLinearColor(0.75f, 0.0f, 0.0f, 0.0f);
+
+		Subsystem->RegisterDataLayer(DefaultLayerAsset);
+
+		// Query location far outside world bounds (Fixture default is 10000x10000 centered at 0,0)
+		FVector2D WayOutOfBounds = FVector2D(50000.0f, 50000.0f);
+		FLinearColor OutValue;
+		bool bSuccess = Subsystem->GetValueAtLocation(FName("DefaultValueLayer"), WayOutOfBounds, OutValue);
+
+		Res &= Test->TestTrue("GetValueAtLocation should succeed for out of bounds", bSuccess);
+		Res &= Test->TestEqual("Out of bounds value should be the layer's default value", OutValue.R, 0.75f, KINDA_SMALL_NUMBER);
+
+		return Res;
+	}
+
+	bool TestImmutableLayerWrite() const
+	{
+		FDebugTestResult Res = true;
+		WorldDataLayersCoreTestContext Context(Test);
+		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
+
+		// Create an immutable layer
+		UWorldDataLayerAsset* ImmutableLayerAsset = NewObject<UWorldDataLayerAsset>();
+		ImmutableLayerAsset->LayerName = FName("ImmutableLayer");
+		ImmutableLayerAsset->ResolutionMode = EResolutionMode::Absolute;
+		ImmutableLayerAsset->Resolution = FIntPoint(10, 10);
+		ImmutableLayerAsset->DataFormat = EDataFormat::R8;
+		ImmutableLayerAsset->Mutability = EWorldDataLayerMutability::Immutable;
+		ImmutableLayerAsset->DefaultValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+
+		Subsystem->RegisterDataLayer(ImmutableLayerAsset);
+
+		// Expect a warning when trying to write
+		Test->AddExpectedError(TEXT("Attempting to write to immutable layer"), EAutomationExpectedErrorFlags::Contains, 1);
+		
+		Subsystem->SetValueAtLocation(FName("ImmutableLayer"), FVector2D(0.0f, 0.0f), FLinearColor::White);
+
+		// Verify it didn't change
+		FLinearColor OutValue;
+		Subsystem->GetValueAtLocation(FName("ImmutableLayer"), FVector2D(0.0f, 0.0f), OutValue);
+		Res &= Test->TestEqual("Immutable layer value should remain 0", OutValue.R, 0.0f, KINDA_SMALL_NUMBER);
+
+		return Res;
+	}
 };
 
 bool FRancWorldLayersCoreTest::RunTest(const FString& Parameters)
@@ -158,6 +233,9 @@ bool FRancWorldLayersCoreTest::RunTest(const FString& Parameters)
 	bResult &= Scenarios.TestNonExistentLayerQuery();
 	bResult &= Scenarios.TestGetFloatValueAtLocationNonExistentLayer();
 	bResult &= Scenarios.TestSetValueAtLocationNonExistentLayer();
+	bResult &= Scenarios.TestMultipleVolumeWarning();
+	bResult &= Scenarios.TestOutOfBoundsDefaultValue();
+	bResult &= Scenarios.TestImmutableLayerWrite();
 
 	return bResult;
 }

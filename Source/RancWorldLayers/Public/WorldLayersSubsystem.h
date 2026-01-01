@@ -12,6 +12,7 @@
 
 class UWorldDataLayerAsset;
 class AWorldDataVolume;
+class AWorldLayersDebugActor;
 
 #include "WorldLayersSubsystem.generated.h"
 
@@ -47,6 +48,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
 	UTexture* GetLayerGpuTexture(FName LayerName) const;
 
+	void SpawnDebugActor();
+
 	// Optimized Spatial Queries
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
 	bool FindNearestPointWithValue(FName LayerName, const FVector2D& SearchOrigin, float MaxSearchRadius, const FLinearColor& TargetValue, FVector2D& OutWorldLocation) const;
@@ -59,9 +62,12 @@ public:
 	void ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath);
 
 	// Public access for external tools (e.g. PCG nodes)
-	const UWorldDataLayer* GetDataLayer(FName LayerName) const { return WorldDataLayers.FindRef(LayerName); }
+	const UWorldDataLayer* GetDataLayer(FName LayerName) const;
 	FIntPoint WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* Layer) const;
 	FVector2D PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* Layer) const;
+
+	FVector2D GetWorldGridOrigin() const { return WorldGridOrigin; }
+	FVector2D GetWorldGridSize() const { return WorldGridSize; }
 
 private:
 	UPROPERTY()
@@ -69,6 +75,9 @@ private:
 
 	UPROPERTY()
 	TWeakObjectPtr<AWorldDataVolume> WorldDataVolume;
+
+	UPROPERTY()
+	TObjectPtr<AWorldLayersDebugActor> DebugActor;
 
 	FVector2D WorldGridOrigin;
 	FVector2D WorldGridSize;

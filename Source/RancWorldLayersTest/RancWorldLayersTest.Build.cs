@@ -21,7 +21,10 @@ public class RancWorldLayersTest : ModuleRules
 			"Engine",
 			"ImageWrapper",
 			"RenderCore",
-			"RHI"
+			"RHI",
+			"UMG",
+			"Slate",
+			"SlateCore"
 		});
 	}
 }

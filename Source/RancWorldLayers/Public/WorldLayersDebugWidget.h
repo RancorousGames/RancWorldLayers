@@ -9,6 +9,14 @@ class UImage;
 class UComboBoxString;
 class UTextBlock;
 
+UENUM(BlueprintType)
+enum class EWorldLayersDebugMode : uint8
+{
+	Hidden,
+	MiniMap,
+	FullScreen
+};
+
 UCLASS()
 class RANCWORLDLAYERS_API UWorldLayersDebugWidget : public UUserWidget
 {
@@ -19,7 +27,15 @@ public:
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual FReply NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
-protected:
+	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
+	void SetDebugMode(EWorldLayersDebugMode NewMode);
+
+	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
+	void SetSelectedLayer(int32 LayerIndex);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RancWorldLayers")
+	EWorldLayersDebugMode CurrentMode = EWorldLayersDebugMode::Hidden;
+
 	UPROPERTY(meta = (BindWidget))
 	UImage* LayerDebugImage;
 
@@ -29,6 +45,7 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* TooltipTextBlock;
 
+protected:
 	UFUNCTION()
 	void OnLayerSelectionChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 

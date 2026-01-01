@@ -145,5 +145,8 @@ public:
 	FWorldDataLayerGPUConfiguration GPUConfiguration;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
+	EWorldDataLayerMutability Mutability = EWorldDataLayerMutability::Continuous;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
 	FWorldDataLayerSpatialOptimization SpatialOptimization;
 };

@@ -21,20 +21,55 @@ void UWorldLayersDebugWidget::NativeConstruct()
 	{
 		TooltipTextBlock->SetVisibility(ESlateVisibility::Hidden);
 	}
+
+	SetDebugMode(CurrentMode);
 }
 
 void UWorldLayersDebugWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	// Real-time update
-	UpdateDebugTexture();
+	if (CurrentMode != EWorldLayersDebugMode::Hidden)
+	{
+		// Real-time update
+		UpdateDebugTexture();
+	}
 }
 
 FReply UWorldLayersDebugWidget::NativeOnMouseMove(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	UpdateTooltip(InGeometry, InMouseEvent);
+	if (CurrentMode != EWorldLayersDebugMode::Hidden)
+	{
+		UpdateTooltip(InGeometry, InMouseEvent);
+	}
 	return FReply::Handled();
+}
+
+void UWorldLayersDebugWidget::SetDebugMode(EWorldLayersDebugMode NewMode)
+{
+	CurrentMode = NewMode;
+	
+	if (NewMode == EWorldLayersDebugMode::Hidden)
+	{
+		SetVisibility(ESlateVisibility::Hidden);
+	}
+	else
+	{
+		SetVisibility(ESlateVisibility::Visible);
+		UpdateDebugTexture();
+	}
+
+	// Note: Actual layout resizing (MiniMap vs FullScreen) is best handled via 
+	// Blueprint events or by manipulating slots if we have a specific structure.
+}
+
+void UWorldLayersDebugWidget::SetSelectedLayer(int32 LayerIndex)
+{
+	if (LayerComboBox && LayerIndex >= 0 && LayerIndex < LayerComboBox->GetOptionCount())
+	{
+		LayerComboBox->SetSelectedIndex(LayerIndex);
+		UpdateDebugTexture();
+	}
 }
 
 void UWorldLayersDebugWidget::PopulateLayerComboBox()

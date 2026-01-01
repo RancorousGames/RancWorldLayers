@@ -1,5 +1,6 @@
 #include "WorldDataVolume.h"
 #include "Components/BrushComponent.h"
+#include "WorldLayersSubsystem.h"
 
 AWorldDataVolume::AWorldDataVolume()
 {
@@ -18,7 +19,26 @@ AWorldDataVolume::AWorldDataVolume()
 	BrushColor.G = 255;
 	BrushColor.B = 25;
 	BrushColor.A = 255;
+}
 
+void AWorldDataVolume::PostActorCreated()
+{
+	Super::PostActorCreated();
+	UE_LOG(LogTemp, Log, TEXT("AWorldDataVolume: PostActorCreated. Registering with subsystem."));
+	if (UWorldLayersSubsystem* WLS = UWorldLayersSubsystem::Get(this))
+	{
+		WLS->InitializeFromVolume(this);
+	}
+}
+
+void AWorldDataVolume::PostLoad()
+{
+	Super::PostLoad();
+	UE_LOG(LogTemp, Log, TEXT("AWorldDataVolume: PostLoad. Registering with subsystem."));
+	if (UWorldLayersSubsystem* WLS = UWorldLayersSubsystem::Get(this))
+	{
+		WLS->InitializeFromVolume(this);
+	}
 }
 
 bool AWorldDataVolume::ShouldCheckCollisionComponentForErrors() const

@@ -14,14 +14,29 @@ class RANCWORLDLAYERS_API AWorldLayersDebugActor : public AActor
 
 public:
 	AWorldLayersDebugActor();
+	virtual void Tick(float DeltaTime) override;
+	virtual bool ShouldTickIfViewportsOnly() const override { return true; }
+
+	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
+	void CreateDebugWidget();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	TSubclassOf<UWorldLayersDebugWidget> DebugWidgetClass;
 
 protected:
 	virtual void BeginPlay() override;
 
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UWorldLayersDebugWidget> DebugWidgetClass;
+	UPROPERTY(VisibleAnywhere, Category = "Visualization")
+	TObjectPtr<UStaticMeshComponent> DebugMesh;
 
 private:
 	UPROPERTY()
 	UWorldLayersDebugWidget* DebugWidgetInstance;
+
+	UPROPERTY()
+	UMaterialInstanceDynamic* DebugMID;
+
+	void HandleDebugInput();
+	void PositionActor();
+	void Update3DVisualization();
 };
