@@ -63,6 +63,7 @@ public:
 
 	// Public access for external tools (e.g. PCG nodes)
 	const UWorldDataLayer* GetDataLayer(FName LayerName) const;
+	TArray<FName> GetActiveLayerNames() const;
 	FIntPoint WorldLocationToPixel(const FVector2D& WorldLocation, const UWorldDataLayer* Layer) const;
 	FVector2D PixelToWorldLocation(const FIntPoint& PixelLocation, const UWorldDataLayer* Layer) const;
 

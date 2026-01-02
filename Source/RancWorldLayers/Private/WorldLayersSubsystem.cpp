@@ -627,3 +627,10 @@ const UWorldDataLayer* UWorldLayersSubsystem::GetDataLayer(FName LayerName) cons
 
 	return WorldDataLayers.FindRef(LayerName);
 }
+
+TArray<FName> UWorldLayersSubsystem::GetActiveLayerNames() const
+{
+	TArray<FName> Names;
+	WorldDataLayers.GetKeys(Names);
+	return Names;
+}
