@@ -13,7 +13,7 @@ void UWorldLayersDebugWidget::NativeConstruct()
 
 	if (LayerComboBox)
 	{
-		PopulateLayerComboBox();
+		RefreshLayerNames();
 		LayerComboBox->OnSelectionChanged.AddDynamic(this, &UWorldLayersDebugWidget::OnLayerSelectionChanged);
 	}
 
@@ -47,6 +47,7 @@ FReply UWorldLayersDebugWidget::NativeOnMouseMove(const FGeometry& InGeometry, c
 
 void UWorldLayersDebugWidget::SetDebugMode(EWorldLayersDebugMode NewMode)
 {
+	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Widget: SetDebugMode %d. Current Visibility: %d"), (int32)NewMode, (int32)GetVisibility());
 	CurrentMode = NewMode;
 	
 	if (NewMode == EWorldLayersDebugMode::Hidden)
@@ -58,9 +59,6 @@ void UWorldLayersDebugWidget::SetDebugMode(EWorldLayersDebugMode NewMode)
 		SetVisibility(ESlateVisibility::Visible);
 		UpdateDebugTexture();
 	}
-
-	// Note: Actual layout resizing (MiniMap vs FullScreen) is best handled via 
-	// Blueprint events or by manipulating slots if we have a specific structure.
 }
 
 void UWorldLayersDebugWidget::SetSelectedLayer(int32 LayerIndex)
@@ -72,18 +70,20 @@ void UWorldLayersDebugWidget::SetSelectedLayer(int32 LayerIndex)
 	}
 }
 
-void UWorldLayersDebugWidget::PopulateLayerComboBox()
+void UWorldLayersDebugWidget::RefreshLayerNames()
 {
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	TArray<FAssetData> AssetData;
-	AssetRegistryModule.Get().GetAssetsByClass(UWorldDataLayerAsset::StaticClass()->GetClassPathName(), AssetData);
+	if (!LayerComboBox) return;
 
-	for (const FAssetData& Data : AssetData)
+	LayerComboBox->ClearOptions();
+
+	UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this);
+	if (Subsystem)
 	{
-		UWorldDataLayerAsset* LayerAsset = Cast<UWorldDataLayerAsset>(Data.GetAsset());
-		if (LayerAsset)
+		TArray<FName> LayerNames = Subsystem->GetActiveLayerNames();
+		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Refreshing Combo Box with %d layers."), LayerNames.Num());
+		for (const FName& Name : LayerNames)
 		{
-			LayerComboBox->AddOption(LayerAsset->LayerName.ToString());
+			LayerComboBox->AddOption(Name.ToString());
 		}
 	}
 
@@ -101,20 +101,26 @@ void UWorldLayersDebugWidget::OnLayerSelectionChanged(FString SelectedItem, ESel
 
 void UWorldLayersDebugWidget::UpdateDebugTexture()
 {
-	if (LayerComboBox->GetSelectedOption() != TEXT(""))
+	if (LayerComboBox && LayerComboBox->GetSelectedOption() != TEXT(""))
 	{
 		UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this);
 		if (Subsystem && LayerDebugImage)
 		{
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Updating Debug Texture for layer: %s"), *LayerComboBox->GetSelectedOption());
 			CurrentDebugTexture = Subsystem->GetDebugTextureForLayer(FName(*LayerComboBox->GetSelectedOption()), CurrentDebugTexture);
 			LayerDebugImage->SetBrushFromTexture(CurrentDebugTexture);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] UpdateDebugTexture: Subsystem or LayerDebugImage is NULL. Subsystem: %s, Image: %s"), 
+				Subsystem ? TEXT("Valid") : TEXT("NULL"), LayerDebugImage ? TEXT("Valid") : TEXT("NULL"));
 		}
 	}
 }
 
 void UWorldLayersDebugWidget::UpdateTooltip(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
-	if (!LayerDebugImage || !TooltipTextBlock)
+	if (!LayerDebugImage || !TooltipTextBlock || !LayerComboBox)
 	{
 		return;
 	}
@@ -127,7 +133,7 @@ void UWorldLayersDebugWidget::UpdateTooltip(const FGeometry& InGeometry, const F
 		FVector2D UV = LocalMousePosition / ImageSize;
 
 		UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this);
-		if (Subsystem && CurrentDebugTexture)
+		if (Subsystem && CurrentDebugTexture && GetWorld())
 		{
 			FIntPoint PixelCoords(FMath::FloorToInt(UV.X * CurrentDebugTexture->GetSizeX()), FMath::FloorToInt(UV.Y * CurrentDebugTexture->GetSizeY()));
 			FLinearColor Value;

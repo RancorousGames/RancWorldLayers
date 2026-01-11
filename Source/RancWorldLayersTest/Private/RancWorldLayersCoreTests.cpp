@@ -198,17 +198,15 @@ public:
 		WorldDataLayersCoreTestContext Context(Test);
 		UWorldLayersSubsystem* Subsystem = Context.GetSubsystem();
 
-		// Create an immutable layer
-		UWorldDataLayerAsset* ImmutableLayerAsset = NewObject<UWorldDataLayerAsset>();
-		ImmutableLayerAsset->LayerName = FName("ImmutableLayer");
-		ImmutableLayerAsset->ResolutionMode = EResolutionMode::Absolute;
-		ImmutableLayerAsset->Resolution = FIntPoint(10, 10);
-		ImmutableLayerAsset->DataFormat = EDataFormat::R8;
-		ImmutableLayerAsset->Mutability = EWorldDataLayerMutability::Immutable;
-		ImmutableLayerAsset->DefaultValue = FLinearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		UWorldDataLayerAsset* InitialOnlyLayerAsset = NewObject<UWorldDataLayerAsset>();
+		InitialOnlyLayerAsset->LayerName = FName("InitialOnlyLayer");
+		InitialOnlyLayerAsset->Mutability = EWorldDataLayerMutability::InitialOnly;
+		InitialOnlyLayerAsset->DataFormat = EDataFormat::R8;
+		InitialOnlyLayerAsset->ResolutionMode = EResolutionMode::Absolute;
+		InitialOnlyLayerAsset->Resolution = FIntPoint(10, 10);
+		Subsystem->RegisterDataLayer(InitialOnlyLayerAsset);
 
-		Subsystem->RegisterDataLayer(ImmutableLayerAsset);
-
+		Res &= Test->TestNotNull("InitialOnly Layer should be registered", Subsystem->GetDataLayer(InitialOnlyLayerAsset->LayerName));
 		// Expect a warning when trying to write
 		Test->AddExpectedError(TEXT("Attempting to write to immutable layer"), EAutomationExpectedErrorFlags::Contains, 1);
 		

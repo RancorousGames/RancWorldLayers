@@ -33,16 +33,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
 	void SetSelectedLayer(int32 LayerIndex);
 
+	/** Wipes and re-populates the layer list. */
+	UFUNCTION(BlueprintCallable, Category = "RancWorldLayers")
+	void RefreshLayerNames();
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "RancWorldLayers")
 	EWorldLayersDebugMode CurrentMode = EWorldLayersDebugMode::Hidden;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidgetOptional))
 	UImage* LayerDebugImage;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidgetOptional))
 	UComboBoxString* LayerComboBox;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(meta = (BindWidgetOptional))
 	UTextBlock* TooltipTextBlock;
 
 protected:

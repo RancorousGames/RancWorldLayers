@@ -51,6 +51,33 @@ public:
 
 		return Res;
 	}
+
+	bool TestDebugWidgetMissingBindings() const
+	{
+		FDebugTestResult Res = true;
+
+		FRancWorldLayersTestFixture Fixture(FName("UIMissingBindingsTest"));
+		UWorld* World = Fixture.GetWorld();
+
+		// Instantiate the widget
+		UWorldLayersDebugWidget* DebugWidget = NewObject<UWorldLayersDebugWidget>(World);
+		Res &= Test->TestNotNull("Widget should be created", DebugWidget);
+
+		// DELIBERATELY leave bindings as NULL
+
+		// Trigger initialization - should not crash
+		DebugWidget->NativeConstruct();
+
+		// Trigger UpdateDebugTexture - should not crash
+		DebugWidget->SetDebugMode(EWorldLayersDebugMode::MiniMap);
+
+		// Trigger Tooltip update - should not crash
+		FGeometry DummyGeometry;
+		FPointerEvent DummyEvent;
+		DebugWidget->NativeOnMouseMove(DummyGeometry, DummyEvent);
+
+		return Res;
+	}
 };
 
 bool FRancWorldLayersUITest::RunTest(const FString& Parameters)
@@ -59,6 +86,7 @@ bool FRancWorldLayersUITest::RunTest(const FString& Parameters)
 
 	bool bResult = true;
 	bResult &= Scenarios.TestDebugWidgetInitialization();
+	bResult &= Scenarios.TestDebugWidgetMissingBindings();
 
 	return bResult;
 }

@@ -43,6 +43,11 @@ public class RancWorldLayers : ModuleRules
 				// ... add private dependencies that you statically link with here ...	
 			}
 			);
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("LevelEditor");
+		}
 		
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]

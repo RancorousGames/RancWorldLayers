@@ -12,65 +12,64 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "WorldLayersDebugWidget.h"
 
+void UWorldLayersSubsystem::ClearAllLayers()
+{
+	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem: Clearing all registered layers."));
+	WorldDataLayers.Empty();
+	WorldDataVolume = nullptr;
+}
+
 void UWorldLayersSubsystem::InitializeFromVolume(AWorldDataVolume* Volume)
 {
-	// Clear any previously existing data
-	WorldDataLayers.Empty();
-	
+	if (!Volume) return;
+
 	UWorld* World = GetWorld();
 	FString WorldName = World ? World->GetOutermost()->GetName() : TEXT("None");
 
-	if (Volume)
+	if (WorldDataVolume.IsValid() && WorldDataVolume.Get() != Volume)
 	{
-		if (WorldDataVolume.IsValid() && WorldDataVolume.Get() != Volume)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] Subsystem already has a registered WorldDataVolume (%s). Ignoring request from %s. Only one volume per world is supported."), *WorldDataVolume->GetName(), *Volume->GetName());
-			return;
-		}
-
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Initializing from Volume '%s' in World %s"), *Volume->GetName(), *WorldName);
-		WorldDataVolume = Volume;
-		const FBox VolumeBounds = Volume->GetBounds().GetBox();
-		WorldGridOrigin = FVector2D(VolumeBounds.Min.X, VolumeBounds.Min.Y);
-		WorldGridSize = FVector2D(VolumeBounds.GetSize().X, VolumeBounds.GetSize().Y);
-
-		if (WorldGridSize.X <= 0 || WorldGridSize.Y <= 0) // Using <= for robustness
-		{
-			// The bounds are invalid, likely from a programmatically spawned volume.
-			// Recalculate both size and origin from the actor's transform.
-			WorldGridSize = FVector2D(Volume->GetActorTransform().GetScale3D().X * 100.0f, Volume->GetActorTransform().GetScale3D().Y * 100.0f);
-			
-			// THE FIX: Also correct the origin based on the new size and the volume's location.
-			// A volume's bounds are centered on its actor location.
-			const FVector2D Center(Volume->GetActorLocation().X, Volume->GetActorLocation().Y);
-			WorldGridOrigin = Center - (WorldGridSize * 0.5f);
-		}
-
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem Bounds Configured: Origin=%s, Size=%s"), *WorldGridOrigin.ToString(), *WorldGridSize.ToString());
-
-		// Load and register all layers specified in the volume
-		for (const TSoftObjectPtr<UWorldDataLayerAsset>& LayerAssetPtr : Volume->LayerAssets)
-		{
-			if (UWorldDataLayerAsset* LayerAsset = LayerAssetPtr.LoadSynchronous())
-			{
-				RegisterDataLayer(LayerAsset);
-			}
-		}
-
-		SpawnDebugActor();
+		UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] Subsystem already has a registered WorldDataVolume (%s). Ignoring request from %s. Only one volume per world is supported."), *WorldDataVolume->GetName(), *Volume->GetName());
+		return;
 	}
-	else
+
+	// Always clear and re-register if we are in the Editor to ensure layer list stays accurate
+	if (GIsEditor)
 	{
-		// Only log if we were previously active and are now being cleared
-		if (WorldDataVolume.IsValid())
-		{
-			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Volume cleared. Subsystem is now inactive."));
-		}
+		WorldDataLayers.Empty();
+	}
+	
+	WorldDataVolume = Volume;
+
+	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Initializing from Volume '%s' in World %s"), *Volume->GetName(), *WorldName);
+	
+	const FBox VolumeBounds = Volume->GetBounds().GetBox();
+	WorldGridOrigin = FVector2D(VolumeBounds.Min.X, VolumeBounds.Min.Y);
+	WorldGridSize = FVector2D(VolumeBounds.GetSize().X, VolumeBounds.GetSize().Y);
+
+	if (WorldGridSize.X <= 0 || WorldGridSize.Y <= 0) // Using <= for robustness
+	{
+		// The bounds are invalid, likely from a programmatically spawned volume.
+		// Recalculate both size and origin from the actor's transform.
+		WorldGridSize = FVector2D(Volume->GetActorTransform().GetScale3D().X * 100.0f, Volume->GetActorTransform().GetScale3D().Y * 100.0f);
 		
-		WorldDataVolume = nullptr;
-		WorldGridOrigin = FVector2D::ZeroVector;
-		WorldGridSize = FVector2D::ZeroVector;
+		// THE FIX: Also correct the origin based on the new size and the volume's location.
+		// A volume's bounds are centered on its actor location.
+		const FVector2D Center(Volume->GetActorLocation().X, Volume->GetActorLocation().Y);
+		WorldGridOrigin = Center - (WorldGridSize * 0.5f);
 	}
+
+	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem Bounds Configured: Origin=%s, Size=%s"), *WorldGridOrigin.ToString(), *WorldGridSize.ToString());
+
+	// Load and register all layers specified in the volume
+	for (const TSoftObjectPtr<UWorldDataLayerAsset>& LayerAssetPtr : Volume->LayerAssets)
+	{
+		if (UWorldDataLayerAsset* LayerAsset = LayerAssetPtr.LoadSynchronous())
+		{
+			RegisterDataLayer(LayerAsset);
+		}
+	}
+
+	SpawnDebugActor();
 }
 
 void UWorldLayersSubsystem::SpawnDebugActor()
@@ -99,26 +98,38 @@ void UWorldLayersSubsystem::SpawnDebugActor()
 		// Attempt to find a suitable widget class if not set
 		if (!DebugActor->DebugWidgetClass)
 		{
-			FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-			TArray<FAssetData> AssetData;
-			// Filter for Widget Blueprints
-			FARFilter Filter;
-			Filter.ClassPaths.Add(FTopLevelAssetPath(FName("/Script/UMGEditor"), FName("WidgetBlueprint")));
-			Filter.bRecursiveClasses = true;
-			AssetRegistryModule.Get().GetAssets(Filter, AssetData);
-
-			for (const FAssetData& Data : AssetData)
+			// 1. Try to load the standard default from Plugin Content
+			const FString DefaultWidgetPath = TEXT("/RancWorldLayers/Debug/BP_WorldLayersDebugWidget.BP_WorldLayersDebugWidget_C");
+			UClass* DefaultWidgetClass = StaticLoadClass(UObject::StaticClass(), nullptr, *DefaultWidgetPath, nullptr, LOAD_None, nullptr);
+			if (DefaultWidgetClass && DefaultWidgetClass->IsChildOf(UWorldLayersDebugWidget::StaticClass()))
 			{
-				// Check parent class using tags (faster than loading) or load and check
-				const FString ParentClassPath = Data.GetTagValueRef<FString>(TEXT("ParentClass"));
-				if (ParentClassPath.Contains(TEXT("WorldLayersDebugWidget")))
+				DebugActor->DebugWidgetClass = TSubclassOf<UWorldLayersDebugWidget>(DefaultWidgetClass);
+			}
+
+			// 2. Fallback: Search Asset Registry
+			if (!DebugActor->DebugWidgetClass)
+			{
+				FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+				TArray<FAssetData> AssetData;
+				// Filter for Widget Blueprints
+				FARFilter Filter;
+				Filter.ClassPaths.Add(FTopLevelAssetPath(FName("/Script/UMGEditor"), FName("WidgetBlueprint")));
+				Filter.bRecursiveClasses = true;
+				AssetRegistryModule.Get().GetAssets(Filter, AssetData);
+
+				for (const FAssetData& Data : AssetData)
 				{
-					if (UBlueprint* BP = Cast<UBlueprint>(Data.GetAsset()))
+					// Check parent class using tags (faster than loading) or load and check
+					const FString ParentClassPath = Data.GetTagValueRef<FString>(TEXT("ParentClass"));
+					if (ParentClassPath.Contains(TEXT("WorldLayersDebugWidget")))
 					{
-						if (BP->GeneratedClass && BP->GeneratedClass->IsChildOf(UWorldLayersDebugWidget::StaticClass()))
+						if (UBlueprint* BP = Cast<UBlueprint>(Data.GetAsset()))
 						{
-							DebugActor->DebugWidgetClass = TSubclassOf<UWorldLayersDebugWidget>(BP->GeneratedClass);
-							break;
+							if (BP->GeneratedClass && BP->GeneratedClass->IsChildOf(UWorldLayersDebugWidget::StaticClass()))
+							{
+								DebugActor->DebugWidgetClass = TSubclassOf<UWorldLayersDebugWidget>(BP->GeneratedClass);
+								break;
+							}
 						}
 					}
 				}
@@ -149,9 +160,16 @@ void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem Initialized for World: %s"), *World->GetOutermost()->GetName());
 
-	// We no longer automatically search for a volume here. 
-	// Initialization is now driven explicitly by AWorldDataVolume (PostLoad/PostActorCreated)
-	// or by the Wartribes Initialization Manager.
+	// AUTO-DISCOVERY in Editor: 
+	if (GIsEditor && !World->IsGameWorld())
+	{
+		for (TActorIterator<AWorldDataVolume> It(World); It; ++It)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Initialize: Auto-discovered Volume '%s' in Editor"), *It->GetName());
+			InitializeFromVolume(*It);
+			break;
+		}
+	}
 
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UWorldLayersSubsystem::Tick));
 }
@@ -169,6 +187,21 @@ void UWorldLayersSubsystem::Deinitialize()
 
 bool UWorldLayersSubsystem::Tick(float DeltaTime)
 {
+	// AUTO-DISCOVERY: Try to find a volume if we don't have one
+	if (!WorldDataVolume.IsValid())
+	{
+		UWorld* World = GetWorld();
+		if (World)
+		{
+			for (TActorIterator<AWorldDataVolume> It(World); It; ++It)
+			{
+				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Tick: Auto-discovered Volume '%s'"), *It->GetName());
+				InitializeFromVolume(*It);
+				break;
+			}
+		}
+	}
+
 	// Ensure Debug Actor exists if we have a volume
 	if (WorldDataVolume.IsValid() && !DebugActor)
 	{
@@ -241,6 +274,46 @@ bool UWorldLayersSubsystem::GetValueAtLocation(FName LayerName, const FVector2D&
 	return false;
 }
 
+bool UWorldLayersSubsystem::GetValueAtLocationInterpolated(FName LayerName, const FVector2D& WorldLocation, FLinearColor& OutValue) const
+{
+	if (const UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName))
+	{
+		// 1. Calculate continuous pixel coordinates
+		FVector2D RelativeLocation = WorldLocation - WorldGridOrigin;
+		FVector2D CellSize;
+		if (DataLayer->Config->ResolutionMode == EResolutionMode::RelativeToWorld)
+		{
+			CellSize = DataLayer->Config->CellSize;
+		}
+		else
+		{
+			CellSize = FVector2D(WorldGridSize.X / (float)DataLayer->Resolution.X, WorldGridSize.Y / (float)DataLayer->Resolution.Y);
+		}
+
+		// Center-aligned sampling: subtract 0.5 to make integer coordinates represent pixel centers
+		float PixelX = (RelativeLocation.X / CellSize.X) - 0.5f;
+		float PixelY = (RelativeLocation.Y / CellSize.Y) - 0.5f;
+
+		int32 X0 = FMath::FloorToInt(PixelX);
+		int32 Y0 = FMath::FloorToInt(PixelY);
+		float FracX = PixelX - (float)X0;
+		float FracY = PixelY - (float)Y0;
+
+		// 2. Fetch 4 neighbors
+		FLinearColor V00 = DataLayer->GetValueAtPixel(FIntPoint(X0, Y0));
+		FLinearColor V10 = DataLayer->GetValueAtPixel(FIntPoint(X0 + 1, Y0));
+		FLinearColor V01 = DataLayer->GetValueAtPixel(FIntPoint(X0, Y0 + 1));
+		FLinearColor V11 = DataLayer->GetValueAtPixel(FIntPoint(X0 + 1, Y0 + 1));
+
+		// 3. Bi-Lerp
+		OutValue = FMath::BiLerp(V00, V10, V01, V11, FracX, FracY);
+		return true;
+	}
+
+	OutValue = FLinearColor::Black;
+	return false;
+}
+
 float UWorldLayersSubsystem::GetFloatValueAtLocation(FName LayerName, const FVector2D& WorldLocation) const
 {
 	FLinearColor Value;
@@ -255,12 +328,6 @@ void UWorldLayersSubsystem::SetValueAtLocation(FName LayerName, const FVector2D&
 {
 	if (UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName))
 	{
-		if (DataLayer->Config->Mutability == EWorldDataLayerMutability::Immutable)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] Attempting to write to immutable layer '%s'. Action ignored."), *LayerName.ToString());
-			return;
-		}
-
 		FIntPoint PixelCoords = WorldLocationToPixel(WorldLocation, DataLayer);
 		DataLayer->SetValueAtPixel(PixelCoords, NewValue);
 	}
@@ -495,6 +562,63 @@ UTexture2D* UWorldLayersSubsystem::GetDebugTextureForLayer(FName LayerName, UTex
 	return DebugTexture;
 }
 
+void UWorldLayersSubsystem::UpdateDebugRenderTarget(FName LayerName, UTextureRenderTarget2D* RenderTarget)
+{
+	if (!RenderTarget || !RenderTarget->GetResource()) return;
+
+	UWorldDataLayer* DataLayer = WorldDataLayers.FindRef(LayerName);
+	if (!DataLayer) return;
+
+	const int32 Width = DataLayer->Resolution.X;
+	const int32 Height = DataLayer->Resolution.Y;
+
+	// Ensure RenderTarget is initialized with correct size and format
+	if (RenderTarget->SizeX != Width || RenderTarget->SizeY != Height)
+	{
+		RenderTarget->InitCustomFormat(Width, Height, PF_B8G8R8A8, false);
+		RenderTarget->UpdateResource();
+	}
+
+	TArray<FColor> ColorBuffer;
+	ColorBuffer.SetNumUninitialized(Width * Height);
+
+	UCurveLinearColor* ColorCurve = Cast<UCurveLinearColor>(DataLayer->Config->DebugVisualization.ColorCurve.LoadSynchronous());
+
+	for (int32 y = 0; y < Height; ++y)
+	{
+		for (int32 x = 0; x < Width; ++x)
+		{
+			FLinearColor PixelValue = DataLayer->GetValueAtPixel(FIntPoint(x, y));
+			FColor MappedColor;
+
+			if (DataLayer->Config->DebugVisualization.VisualizationMode == EWorldDataLayerVisualizationMode::ColorRamp && ColorCurve)
+			{
+				float NormalizedValue = (PixelValue.R - DataLayer->Config->DebugValueRange.X) / (DataLayer->Config->DebugValueRange.Y - DataLayer->Config->DebugValueRange.X);
+				MappedColor = ColorCurve->GetLinearColorValue(FMath::Clamp(NormalizedValue, 0.f, 1.f)).ToFColor(true);
+			}
+			else // Grayscale
+			{
+				MappedColor = PixelValue.ToFColor(true); // to sRGB
+			}
+
+			ColorBuffer[y * Width + x] = MappedColor;
+		}
+	}
+
+	FTextureResource* TextureResource = RenderTarget->GetResource();
+	ENQUEUE_RENDER_COMMAND(UpdateDebugRenderTargetCommand)(
+		[TextureResource, Width, Height, ColorBuffer = MoveTemp(ColorBuffer)](FRHICommandListImmediate& RHICmdList)
+		{
+			FUpdateTextureRegion2D Region(0, 0, 0, 0, Width, Height);
+			FRHITexture* TextureRHI = TextureResource->GetTextureRHI();
+			if (TextureRHI)
+			{
+				RHICmdList.UpdateTexture2D(TextureRHI, 0, Region, Width * sizeof(FColor), (uint8*)ColorBuffer.GetData());
+			}
+		}
+	);
+}
+
 void UWorldLayersSubsystem::ExportLayerToPNG(UWorldDataLayerAsset* LayerAsset, const FString& FilePath)
 {
 	if (!LayerAsset)
@@ -558,6 +682,46 @@ void UWorldLayersSubsystem::ImportLayerFromPNG(UWorldDataLayerAsset* LayerAsset,
 			ImportedTexture->GetPlatformData()->Mips[0].BulkData.Unlock();
 			LayerAsset->Modify();
 		}
+	}
+}
+
+void UWorldLayersSubsystem::UpdateDerivativeLayer(FName LayerName)
+{
+	UWorldDataLayer* TargetLayer = WorldDataLayers.FindRef(LayerName);
+	if (!TargetLayer || TargetLayer->Config->Mutability != EWorldDataLayerMutability::Derivative) return;
+
+	// Search for any actor in the world that provides derivation logic
+	bool bHandled = false;
+	int32 CheckedActors = 0;
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		CheckedActors++;
+		AActor* Actor = *It;
+		
+		IWorldLayersDerivationProvider* Provider = Cast<IWorldLayersDerivationProvider>(Actor);
+		if (Provider)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Found Provider: %s"), *Actor->GetName());
+			if (Provider->OnDeriveLayer(LayerName))
+			{
+				bHandled = true;
+				break;
+			}
+		}
+		else if (Actor->GetName().Contains(TEXT("Procedural")))
+		{
+			// BP fallback if we ever add a BP implementation later
+			if (Actor->GetClass()->ImplementsInterface(UWorldLayersDerivationProvider::StaticClass()))
+			{
+				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Found BP Provider: %s"), *Actor->GetName());
+				// For now, we only support native, but let's log the attempt
+			}
+		}
+	}
+
+	if (!bHandled)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] No IWorldLayersDerivationProvider found in world. Checked %d actors. Target Layer: %s"), CheckedActors, *LayerName.ToString());
 	}
 }
 

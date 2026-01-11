@@ -24,6 +24,7 @@ public:
 	TArray<uint8> RawData;
 
 	bool bIsDirty;
+	bool bHasBeenInitializedFromTexture = false;
 
 	UPROPERTY()
 	UTexture* GpuRepresentation;
@@ -33,6 +34,7 @@ public:
 	float LastReadbackTime;
 
 	void Initialize(UWorldDataLayerAsset* InConfig, const FVector2D& InWorldGridSize);
+	void Reinitialize(const FVector2D& InWorldGridSize);
 	FLinearColor GetValueAtPixel(const FIntPoint& PixelCoords) const;
 	void SetValueAtPixel(const FIntPoint& PixelCoords, const FLinearColor& NewValue);
 	

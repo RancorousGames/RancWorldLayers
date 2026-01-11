@@ -93,9 +93,9 @@ struct FWorldDataLayerGPUConfiguration
 UENUM()
 enum class EWorldDataLayerMutability : uint8
 {
-	Immutable,
 	InitialOnly,
-	Continuous
+	Continuous,
+	Derivative
 };
 
 UCLASS()
@@ -108,7 +108,15 @@ public:
 	FName LayerName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Core Identity")
-	FGuid LayerID;
+	EWorldDataLayerMutability Mutability = EWorldDataLayerMutability::Continuous;
+
+	/** If Mutability is Derivative, this layer will be auto-generated from these source layers. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Core Identity|Derivative", meta = (EditCondition = "Mutability == EWorldDataLayerMutability::Derivative"))
+	TArray<FName> SourceLayerNames;
+
+	/** The project-specific method name used to calculate this layer (e.g. 'BiomeMap'). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Core Identity|Derivative", meta = (EditCondition = "Mutability == EWorldDataLayerMutability::Derivative"))
+	FName DerivationMethod;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Data Representation")
 	EResolutionMode ResolutionMode;
@@ -143,9 +151,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
 	FWorldDataLayerGPUConfiguration GPUConfiguration;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
-	EWorldDataLayerMutability Mutability = EWorldDataLayerMutability::Continuous;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Runtime Behavior & Optimization")
 	FWorldDataLayerSpatialOptimization SpatialOptimization;

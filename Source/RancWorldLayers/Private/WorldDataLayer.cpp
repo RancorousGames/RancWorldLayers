@@ -6,6 +6,12 @@
 void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D& InWorldGridSize)
 {
 	Config = TObjectPtr<UWorldDataLayerAsset>(InConfig);
+	Reinitialize(InWorldGridSize);
+}
+
+void UWorldDataLayer::Reinitialize(const FVector2D& InWorldGridSize)
+{
+	if (!Config) return;
 
 	if (Config->ResolutionMode == EResolutionMode::Absolute)
 	{
@@ -18,8 +24,8 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 
 	int32 BytesPerPixel = GetBytesPerPixel();
 	
-	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer '%s' Initialized: Format=%d, BytesPerPixel=%d, Res=%dx%d"), 
-		*Config->LayerName.ToString(), (int32)Config->DataFormat, BytesPerPixel, Resolution.X, Resolution.Y);
+	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer '%s' Initializing: Format=%d, Res=%dx%d"), 
+		*Config->LayerName.ToString(), (int32)Config->DataFormat, Resolution.X, Resolution.Y);
 
 	RawData.SetNumZeroed(Resolution.X * Resolution.Y * BytesPerPixel);
 
@@ -37,50 +43,105 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 	// 2. Override with InitialDataTexture if provided
 	if (UTexture2D* Texture = Config->InitialDataTexture.LoadSynchronous())
 	{
-		const int32 TexWidth = Texture->GetSizeX();
-		const int32 TexHeight = Texture->GetSizeY();
-		const EPixelFormat PixelFormat = Texture->GetPixelFormat();
-		
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer: Initializing '%s' from texture '%s' (%dx%d). Format: %d"), 
-			*Config->LayerName.ToString(), *Texture->GetName(), TexWidth, TexHeight, (int32)PixelFormat);
+		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer: Populating '%s' from texture '%s'"), *Config->LayerName.ToString(), *Texture->GetName());
 
-		const void* RawTextureData = Texture->GetPlatformData()->Mips[0].BulkData.LockReadOnly();
-		if (RawTextureData)
+#if WITH_EDITOR
+		FTextureSource& Source = Texture->Source;
+		const int32 TexWidth = Source.GetSizeX();
+		const int32 TexHeight = Source.GetSizeY();
+		const ETextureSourceFormat SourceFormat = Source.GetFormat();
+
+		// We only support reading from standard 8-bit formats for now via Source
+		if (SourceFormat == TSF_BGRA8 || SourceFormat == TSF_G8)
 		{
-			for (int32 Y = 0; Y < Resolution.Y; ++Y)
+			TArray64<uint8> OutRawData;
+			if (Source.GetMipData(OutRawData, 0))
 			{
-				for (int32 X = 0; X < Resolution.X; ++X)
+				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer: Successfully locked Source data (%dx%d)"), TexWidth, TexHeight);
+				
+				for (int32 Y = 0; Y < Resolution.Y; ++Y)
 				{
-					int32 TexX = FMath::Clamp(FMath::RoundToInt((float)X / (float)Resolution.X * (float)TexWidth), 0, TexWidth - 1);
-					int32 TexY = FMath::Clamp(FMath::RoundToInt((float)Y / (float)Resolution.Y * (float)TexHeight), 0, TexHeight - 1);
-					
-					FLinearColor PixelColor = FLinearColor::Black;
-					
-					if (PixelFormat == PF_B8G8R8A8)
-					{
-						const FColor* FormattedData = static_cast<const FColor*>(RawTextureData);
-						PixelColor = FLinearColor::FromSRGBColor(FormattedData[TexY * TexWidth + TexX]);
-					}
-					else if (PixelFormat == PF_G8)
-					{
-						const uint8* ByteData = static_cast<const uint8*>(RawTextureData);
-						float Gray = ByteData[TexY * TexWidth + TexX] / 255.0f;
-						PixelColor = FLinearColor(Gray, Gray, Gray, 1.0f);
-					}
+					float V = (float)Y / (float)Resolution.Y;
+					int32 TexY = FMath::Clamp(FMath::FloorToInt(V * TexHeight), 0, TexHeight - 1);
 
-					SetValueAtPixel(FIntPoint(X, Y), PixelColor);
+					for (int32 X = 0; X < Resolution.X; ++X)
+					{
+						float U = (float)X / (float)Resolution.X;
+						int32 TexX = FMath::Clamp(FMath::FloorToInt(U * TexWidth), 0, TexWidth - 1);
+						
+						FLinearColor PixelColor = FLinearColor::Black;
+						
+						if (SourceFormat == TSF_BGRA8)
+						{
+							const FColor* FormattedData = reinterpret_cast<const FColor*>(OutRawData.GetData());
+							FColor RawColor = FormattedData[TexY * TexWidth + TexX];
+							PixelColor = FLinearColor::FromSRGBColor(RawColor);
+						}
+						else if (SourceFormat == TSF_G8)
+						{
+							float Gray = OutRawData[TexY * TexWidth + TexX] / 255.0f;
+							PixelColor = FLinearColor(Gray, Gray, Gray, 1.0f);
+						}
+
+						SetValueAtPixel(FIntPoint(X, Y), PixelColor);
+					}
 				}
+				bHasBeenInitializedFromTexture = true;
+				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer: Successfully populated '%s' from Source."), *Config->LayerName.ToString());
 			}
-			Texture->GetPlatformData()->Mips[0].BulkData.Unlock();
-			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] WorldDataLayer: Successfully populated '%s' from texture."), *Config->LayerName.ToString());
 		}
 		else
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] WorldDataLayer: Failed to lock texture data for '%s'."), *Config->LayerName.ToString());
+			UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] WorldDataLayer: Unsupported Source format %d for '%s'. Falling back to PlatformData (may fail if compressed)."), (int32)SourceFormat, *Texture->GetName());
+#endif
+			// Fallback to PlatformData if Source is unavailable or unsupported format
+			FTexturePlatformData* PlatformData = Texture->GetPlatformData();
+			if (PlatformData && PlatformData->Mips.Num() > 0)
+			{
+				const void* RawTextureData = PlatformData->Mips[0].BulkData.LockReadOnly();
+				if (RawTextureData)
+				{
+					const int32 PWidth = Texture->GetSizeX();
+					const int32 PHeight = Texture->GetSizeY();
+					const EPixelFormat PixelFormat = Texture->GetPixelFormat();
+
+					for (int32 Y = 0; Y < Resolution.Y; ++Y)
+					{
+						float V = (float)Y / (float)Resolution.Y;
+						int32 TexY = FMath::Clamp(FMath::FloorToInt(V * PHeight), 0, PHeight - 1);
+
+						for (int32 X = 0; X < Resolution.X; ++X)
+						{
+							float U = (float)X / (float)Resolution.X;
+							int32 TexX = FMath::Clamp(FMath::FloorToInt(U * PWidth), 0, PWidth - 1);
+							
+							FLinearColor PixelColor = FLinearColor::Black;
+							
+							if (PixelFormat == PF_B8G8R8A8)
+							{
+								const FColor* FormattedData = static_cast<const FColor*>(RawTextureData);
+								PixelColor = FLinearColor::FromSRGBColor(FormattedData[TexY * PWidth + TexX]);
+							}
+							else if (PixelFormat == PF_G8)
+							{
+								const uint8* ByteData = static_cast<const uint8*>(RawTextureData);
+								float Gray = ByteData[TexY * PWidth + TexX] / 255.0f;
+								PixelColor = FLinearColor(Gray, Gray, Gray, 1.0f);
+							}
+
+							SetValueAtPixel(FIntPoint(X, Y), PixelColor);
+						}
+					}
+					PlatformData->Mips[0].BulkData.Unlock();
+					bHasBeenInitializedFromTexture = true;
+				}
+			}
+#if WITH_EDITOR
 		}
+#endif
 	}
 
-	bIsDirty = false;
+	bIsDirty = true; // Mark dirty so it syncs to GPU
 	LastReadbackTime = 0.0f;
 
 	// Initialize Spatial Index if configured
@@ -92,7 +153,6 @@ void UWorldDataLayer::Initialize(UWorldDataLayerAsset* InConfig, const FVector2D
 			SpatialIndices.Emplace(ValueToTrack, MakeShared<FQuadtree>(FBox2D(FVector2D(0, 0), FVector2D(Resolution.X, Resolution.Y))));
 		}
 
-		// Populate initial data
 		for (int32 Y = 0; Y < Resolution.Y; ++Y)
 		{
 			for (int32 X = 0; X < Resolution.X; ++X)

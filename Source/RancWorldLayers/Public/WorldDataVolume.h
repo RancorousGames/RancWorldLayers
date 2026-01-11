@@ -38,6 +38,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "World Data")
 	EOutOfBoundsBehavior OutOfBoundsBehavior = EOutOfBoundsBehavior::ReturnDefaultValue;
 
+	/** Forces the WorldLayersSubsystem to sync with this volume and populate/initialize layers. */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "World Data")
+	void InitializeSubsystem();
+
+	/** Populates all registered layers with their default data (useful for Editor setup). */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "World Data")
+	void PopulateLayers();
+
+	/** If true, the 'PopulateLayers' function will also create and populate a 'BiomeTest' layer with a gradient. Useful for standalone plugin testing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data|Test")
+	bool bAutoPopulateTestLayer = true;
+
+	/** If true, the test gradient will overwrite existing data in the 'BiomeTest' layer. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data|Test")
+	bool bOverwriteTestLayer = false;
+
+	/** The relative height at which the small debug plane is spawned. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data|Debug")
+	float SmallPlaneSpawnHeight = 1000.0f;
+
 protected:
 	virtual bool ShouldCheckCollisionComponentForErrors() const override;
 };
