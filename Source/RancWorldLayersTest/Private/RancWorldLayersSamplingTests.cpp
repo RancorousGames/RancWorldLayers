@@ -96,6 +96,47 @@ public:
 
 		return Res;
 	}
+
+	bool TestDominant3Unpacking() const
+	{
+		FDebugTestResult Res = true;
+
+		// Simulate a Dominant 3 packed pixel
+		// R: 5 (ID1), G: 12 (ID2), B: 2 (ID3)
+		// Alpha: (10 << 4) | 3 = 163 (W1=10/15, W2=3/15, W3=2/15)
+		const FLinearColor PackedColor(5.0f / 255.0f, 12.0f / 255.0f, 2.0f / 255.0f, 163.0f / 255.0f);
+
+		// Helper to emulate what the PCG node will do
+		auto UnpackDominant3 = [](const FLinearColor& Color, int32& OutB1, int32& OutB2, int32& OutB3, float& OutW1, float& OutW2, float& OutW3)
+		{
+			OutB1 = FMath::RoundToInt(Color.R * 255.0f);
+			OutB2 = FMath::RoundToInt(Color.G * 255.0f);
+			OutB3 = FMath::RoundToInt(Color.B * 255.0f);
+			
+			uint8 Alpha = FMath::RoundToInt(Color.A * 255.0f);
+			int32 P1 = (Alpha >> 4);
+			int32 P2 = (Alpha & 0x0F);
+			int32 P3 = 15 - P1 - P2;
+
+			OutW1 = P1 / 15.0f;
+			OutW2 = P2 / 15.0f;
+			OutW3 = P3 / 15.0f;
+		};
+
+		int32 B1, B2, b3;
+		float W1, W2, W3;
+		UnpackDominant3(PackedColor, B1, B2, b3, W1, W2, W3);
+
+		Res &= Test->TestEqual("B1 should be 5", B1, 5);
+		Res &= Test->TestEqual("B2 should be 12", B2, 12);
+		Res &= Test->TestEqual("B3 should be 2", b3, 2);
+		Res &= Test->TestEqual("W1 should be ~0.666", W1, 10.0f / 15.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("W2 should be 0.2", W2, 3.0f / 15.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("W3 should be ~0.133", W3, 2.0f / 15.0f, KINDA_SMALL_NUMBER);
+		Res &= Test->TestEqual("Weights should sum to 1.0", W1 + W2 + W3, 1.0f, KINDA_SMALL_NUMBER);
+
+		return Res;
+	}
 };
 
 bool FRancWorldLayersSamplingTest::RunTest(const FString& Parameters)
@@ -104,7 +145,11 @@ bool FRancWorldLayersSamplingTest::RunTest(const FString& Parameters)
 
 	bool bResult = true;
 
+	AddInfo("Running Test: BilinearInterpolation");
 	bResult &= Scenarios.TestBilinearInterpolation();
+
+	AddInfo("Running Test: Dominant3Unpacking");
+	bResult &= Scenarios.TestDominant3Unpacking();
 
 	return bResult;
 }

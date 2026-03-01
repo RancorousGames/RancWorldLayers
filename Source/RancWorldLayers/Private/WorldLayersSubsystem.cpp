@@ -181,6 +181,13 @@ void UWorldLayersSubsystem::Deinitialize()
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
 	}
+
+	if (DebugActor)
+	{
+		DebugActor->Destroy();
+		DebugActor = nullptr;
+	}
+
 	WorldDataLayers.Empty();
 	Super::Deinitialize();
 }

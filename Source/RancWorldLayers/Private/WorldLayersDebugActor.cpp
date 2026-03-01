@@ -102,6 +102,24 @@ void AWorldLayersDebugActor::PostActorCreated()
 
 void AWorldLayersDebugActor::Destroyed()
 {
+#if WITH_EDITOR
+	if (GIsEditor && CachedSlateWidget.IsValid())
+	{
+		if (BoundViewport.IsValid())
+		{
+			BoundViewport.Pin()->RemoveOverlayWidget(CachedSlateWidget.ToSharedRef());
+		}
+		CachedSlateWidget.Reset();
+		BoundViewport.Reset();
+	}
+#endif
+
+	if (DebugWidgetInstance)
+	{
+		DebugWidgetInstance->ClearFlags(RF_Standalone);
+		DebugWidgetInstance = nullptr;
+	}
+
 	if (FSlateApplication::IsInitialized() && InputProcessorInstance.IsValid())
 	{
 		FSlateApplication::Get().UnregisterInputPreProcessor(InputProcessorInstance);
@@ -182,6 +200,24 @@ void AWorldLayersDebugActor::InitializeActor()
 
 void AWorldLayersDebugActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+#if WITH_EDITOR
+	if (GIsEditor && CachedSlateWidget.IsValid())
+	{
+		if (BoundViewport.IsValid())
+		{
+			BoundViewport.Pin()->RemoveOverlayWidget(CachedSlateWidget.ToSharedRef());
+		}
+		CachedSlateWidget.Reset();
+		BoundViewport.Reset();
+	}
+#endif
+
+	if (DebugWidgetInstance)
+	{
+		DebugWidgetInstance->ClearFlags(RF_Standalone);
+		DebugWidgetInstance = nullptr;
+	}
+
 	if (FSlateApplication::IsInitialized() && InputProcessorInstance.IsValid())
 	{
 		FSlateApplication::Get().UnregisterInputPreProcessor(InputProcessorInstance);
@@ -360,14 +396,14 @@ void AWorldLayersDebugActor::CreateDebugWidget()
 #if WITH_EDITOR
 			else if (GIsEditor)
 			{
-				// Ensure it doesn't get GC'd in the editor if it's not in a viewport
-				DebugWidgetInstance->SetFlags(RF_Standalone);
-
 				FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
 				TSharedPtr<SLevelViewport> ActiveLevelViewport = LevelEditorModule.GetFirstActiveLevelViewport();
 				if (ActiveLevelViewport.IsValid())
 				{
 					TSharedRef<SWidget> SlateWidget = DebugWidgetInstance->TakeWidget();
+					CachedSlateWidget = SlateWidget;
+					BoundViewport = ActiveLevelViewport;
+
 					UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Adding Widget to Editor Viewport Overlay."));
 					ActiveLevelViewport->AddOverlayWidget(SlateWidget);
 				}

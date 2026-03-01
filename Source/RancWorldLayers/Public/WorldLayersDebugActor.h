@@ -93,4 +93,9 @@ private:
 	void Update3DVisualization();
 	void Set3DMode(EWorldLayers3DMode NewMode);
 	void RefreshLayerNames();
+
+#if WITH_EDITOR
+	TSharedPtr<SWidget> CachedSlateWidget;
+	TWeakPtr<class SLevelViewport> BoundViewport;
+#endif
 };
