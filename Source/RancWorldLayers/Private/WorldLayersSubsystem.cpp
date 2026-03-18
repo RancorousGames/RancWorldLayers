@@ -11,6 +11,33 @@
 #include "WorldLayersDebugActor.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "WorldLayersDebugWidget.h"
+#include "Framework/Application/IInputProcessor.h"
+#include "Framework/Application/SlateApplication.h"
+
+/** Global input processor to catch keys in the Editor even without focus/PIE. Managed by the Subsystem. */
+class FWorldLayersInputProcessor : public IInputProcessor
+{
+public:
+	TSet<FKey> PressedKeys;
+
+	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override {}
+
+	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
+	{
+		FKey Key = InKeyEvent.GetKey();
+		PressedKeys.Add(Key);
+		return false; // Don't consume the event
+	}
+
+	virtual bool HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
+	{
+		FKey Key = InKeyEvent.GetKey();
+		PressedKeys.Remove(Key);
+		return false;
+	}
+
+	virtual const TCHAR* GetDebugName() const override { return TEXT("WorldLayersInputProcessor"); }
+};
 
 void UWorldLayersSubsystem::ClearAllLayers()
 {
@@ -32,12 +59,6 @@ void UWorldLayersSubsystem::InitializeFromVolume(AWorldDataVolume* Volume)
 		return;
 	}
 
-	// Always clear and re-register if we are in the Editor to ensure layer list stays accurate
-	if (GIsEditor)
-	{
-		WorldDataLayers.Empty();
-	}
-	
 	WorldDataVolume = Volume;
 
 	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Initializing from Volume '%s' in World %s"), *Volume->GetName(), *WorldName);
@@ -160,6 +181,14 @@ void UWorldLayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem Initialized for World: %s"), *World->GetOutermost()->GetName());
 
+	// Initialize Input Processor
+	if (FSlateApplication::IsInitialized() && !InputProcessor.IsValid())
+	{
+		InputProcessor = MakeShareable(new FWorldLayersInputProcessor());
+		FSlateApplication::Get().RegisterInputPreProcessor(InputProcessor);
+		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem: Registered Global Input Processor."));
+	}
+
 	// AUTO-DISCOVERY in Editor: 
 	if (GIsEditor && !World->IsGameWorld())
 	{
@@ -182,6 +211,13 @@ void UWorldLayersSubsystem::Deinitialize()
 		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
 	}
 
+	if (FSlateApplication::IsInitialized() && InputProcessor.IsValid())
+	{
+		FSlateApplication::Get().UnregisterInputPreProcessor(InputProcessor);
+		InputProcessor.Reset();
+		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Subsystem: Unregistered Global Input Processor."));
+	}
+
 	if (DebugActor)
 	{
 		DebugActor->Destroy();
@@ -190,6 +226,11 @@ void UWorldLayersSubsystem::Deinitialize()
 
 	WorldDataLayers.Empty();
 	Super::Deinitialize();
+}
+
+bool UWorldLayersSubsystem::IsKeyDown(FKey Key) const
+{
+	return InputProcessor.IsValid() && InputProcessor->PressedKeys.Contains(Key);
 }
 
 bool UWorldLayersSubsystem::Tick(float DeltaTime)
@@ -344,9 +385,16 @@ void UWorldLayersSubsystem::RegisterDataLayer(UWorldDataLayerAsset* LayerAsset)
 {
 	if (LayerAsset)
 	{
-		UWorldDataLayer* NewDataLayer = NewObject<UWorldDataLayer>(this);
-		NewDataLayer->Initialize(LayerAsset, WorldGridSize);
-		WorldDataLayers.Add(LayerAsset->LayerName, NewDataLayer);
+		UWorldDataLayer* TargetLayer = WorldDataLayers.FindRef(LayerAsset->LayerName);
+		bool bIsNew = false;
+		if (!TargetLayer)
+		{
+			TargetLayer = NewObject<UWorldDataLayer>(this);
+			WorldDataLayers.Add(LayerAsset->LayerName, TargetLayer);
+			bIsNew = true;
+		}
+
+		TargetLayer->Initialize(LayerAsset, WorldGridSize);
 
 		if (LayerAsset->GPUConfiguration.bKeepUpdatedOnGPU)
 		{
@@ -363,14 +411,22 @@ void UWorldLayersSubsystem::RegisterDataLayer(UWorldDataLayerAsset* LayerAsset)
 			{
 				if (LayerAsset->GPUConfiguration.bIsGPUWritable)
 				{
-					NewDataLayer->GpuRepresentation = NewObject<UTextureRenderTarget2D>(NewDataLayer);
-					Cast<UTextureRenderTarget2D>(NewDataLayer->GpuRepresentation)->InitCustomFormat(NewDataLayer->Resolution.X, NewDataLayer->Resolution.Y, PixelFormat, false);
+					if (!TargetLayer->GpuRepresentation || !TargetLayer->GpuRepresentation->IsA<UTextureRenderTarget2D>())
+					{
+						TargetLayer->GpuRepresentation = NewObject<UTextureRenderTarget2D>(TargetLayer);
+					}
+					Cast<UTextureRenderTarget2D>(TargetLayer->GpuRepresentation)->InitCustomFormat(TargetLayer->Resolution.X, TargetLayer->Resolution.Y, PixelFormat, false);
 				}
 				else
 				{
-					NewDataLayer->GpuRepresentation = UTexture2D::CreateTransient(NewDataLayer->Resolution.X, NewDataLayer->Resolution.Y, PixelFormat);
+					if (!TargetLayer->GpuRepresentation || !TargetLayer->GpuRepresentation->IsA<UTexture2D>() || 
+						TargetLayer->GpuRepresentation->GetResource()->GetSizeX() != TargetLayer->Resolution.X ||
+						TargetLayer->GpuRepresentation->GetResource()->GetSizeY() != TargetLayer->Resolution.Y)
+					{
+						TargetLayer->GpuRepresentation = UTexture2D::CreateTransient(TargetLayer->Resolution.X, TargetLayer->Resolution.Y, PixelFormat);
+					}
 				}
-				NewDataLayer->GpuRepresentation->UpdateResource();
+				TargetLayer->GpuRepresentation->UpdateResource();
 			}
 		}
 	}

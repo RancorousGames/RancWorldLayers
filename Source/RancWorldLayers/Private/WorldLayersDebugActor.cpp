@@ -25,39 +25,12 @@
 #include "Widgets/SWeakWidget.h"
 #endif
 
-/** Global input processor to catch keys in the Editor even without focus/PIE. */
-class FWorldLayersInputProcessor : public IInputProcessor
-{
-public:
-	TSet<FKey> PressedKeys;
-
-	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override {}
-
-	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
-	{
-		FKey Key = InKeyEvent.GetKey();
-		PressedKeys.Add(Key);
-		UE_LOG(LogTemp, VeryVerbose, TEXT("[RancWorldLayers] InputProcessor KeyDown: %s"), *Key.ToString());
-		return false; // Don't consume the event
-	}
-
-	virtual bool HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
-	{
-		FKey Key = InKeyEvent.GetKey();
-		PressedKeys.Remove(Key);
-		UE_LOG(LogTemp, VeryVerbose, TEXT("[RancWorldLayers] InputProcessor KeyUp: %s"), *Key.ToString());
-		return false;
-	}
-
-	virtual const TCHAR* GetDebugName() const override { return TEXT("WorldLayersInputProcessor"); }
-};
-
-TSharedPtr<FWorldLayersInputProcessor> InputProcessorInstance;
-
 AWorldLayersDebugActor::AWorldLayersDebugActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	bIsEditorOnlyActor = false;
+
+	FMemory::Memzero(bLastNumPadKeysDown, sizeof(bLastNumPadKeysDown));
 
 	USceneComponent* SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRoot;
@@ -86,13 +59,6 @@ void AWorldLayersDebugActor::PostActorCreated()
 {
 	Super::PostActorCreated();
 	
-	if (FSlateApplication::IsInitialized() && !InputProcessorInstance.IsValid())
-	{
-		InputProcessorInstance = MakeShareable(new FWorldLayersInputProcessor());
-		FSlateApplication::Get().RegisterInputPreProcessor(InputProcessorInstance);
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Global Input Processor Registered (PostActorCreated)."));
-	}
-
 	// In Editor, we want to immediately create the widget and position
 	if (GIsEditor && !GetWorld()->IsGameWorld())
 	{
@@ -120,26 +86,12 @@ void AWorldLayersDebugActor::Destroyed()
 		DebugWidgetInstance = nullptr;
 	}
 
-	if (FSlateApplication::IsInitialized() && InputProcessorInstance.IsValid())
-	{
-		FSlateApplication::Get().UnregisterInputPreProcessor(InputProcessorInstance);
-		InputProcessorInstance.Reset();
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Global Input Processor Unregistered (Destroyed)."));
-	}
 	Super::Destroyed();
 }
 
 void AWorldLayersDebugActor::BeginPlay()
 {
 	Super::BeginPlay();
-	
-	if (FSlateApplication::IsInitialized() && !InputProcessorInstance.IsValid())
-	{
-		InputProcessorInstance = MakeShareable(new FWorldLayersInputProcessor());
-		FSlateApplication::Get().RegisterInputPreProcessor(InputProcessorInstance);
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Global Input Processor Registered (BeginPlay)."));
-	}
-
 	InitializeActor();
 }
 
@@ -218,12 +170,6 @@ void AWorldLayersDebugActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		DebugWidgetInstance = nullptr;
 	}
 
-	if (FSlateApplication::IsInitialized() && InputProcessorInstance.IsValid())
-	{
-		FSlateApplication::Get().UnregisterInputPreProcessor(InputProcessorInstance);
-		InputProcessorInstance.Reset();
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Global Input Processor Unregistered (EndPlay)."));
-	}
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -231,30 +177,16 @@ void AWorldLayersDebugActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	
-	// Sanity log to verify the actor is alive and ticking
-	static float LastTickLogTime = 0.0f;
-	if (GetWorld()->GetTimeSeconds() - LastTickLogTime > 5.0f)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Debug Actor Tick: Mode=%d, Layer=%d, Pos=%s, WidgetValid=%s, ProcessorValid=%s"), 
-			(int32)Current3DMode, SelectedLayerIndex, *GetActorLocation().ToString(),
-			DebugWidgetInstance ? TEXT("True") : TEXT("False"), 
-			InputProcessorInstance.IsValid() ? TEXT("True") : TEXT("False"));
-		LastTickLogTime = GetWorld()->GetTimeSeconds();
-	}
-
 	HandleDebugInput();
 	Update3DVisualization();
 }
 
-static bool bLastNumPad0Down = false;
-static bool bLastNumPadDotDown = false;
-static bool bLastNumPadKeysDown[10] = { false };
-
 void AWorldLayersDebugActor::HandleDebugInput()
 {
-	if (!InputProcessorInstance.IsValid()) return;
+	UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this);
+	if (!Subsystem) return;
 
-	auto IsKeyDown = [&](const FKey& Key) { return InputProcessorInstance->PressedKeys.Contains(Key); };
+	auto IsKeyDown = [&](const FKey& Key) { return Subsystem->IsKeyDown(Key); };
 
 	const bool bCtrlDown = IsKeyDown(EKeys::LeftControl) || IsKeyDown(EKeys::RightControl);
 	if (!bCtrlDown) return;
@@ -271,30 +203,26 @@ void AWorldLayersDebugActor::HandleDebugInput()
 		// 3: 3D Small Plane
 		// 4: 3D World Plane
 
-		static int32 CombinedMode = 0;
 		CombinedMode = (CombinedMode + 1) % 5;
 
-		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Debug Mode Cycled: NewMode=%d"), CombinedMode);
+		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Debug Mode Cycled [Actor:%p]: NewMode=%d"), this, CombinedMode);
 
 		OnDebugModeChanged(CombinedMode);
 
-		if (UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this))
-		{
-			// Notify anyone else interested
-			Subsystem->OnRequestUpdate.Broadcast();
+		// Notify anyone else interested
+		Subsystem->OnRequestUpdate.Broadcast();
 
-			// Autoritative Plugin Fix: Tell the Volume to ensure its layers are ready
-			int32 VolumeCount = 0;
-			for (TActorIterator<AWorldDataVolume> It(GetWorld()); It; ++It)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Triggering PopulateLayers on Volume: %s"), *It->GetName());
-				It->PopulateLayers();
-				VolumeCount++;
-			}
-			if (VolumeCount == 0)
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] No AWorldDataVolume found to populate layers for."));
-			}
+		// Autoritative Plugin Fix: Tell the Volume to ensure its layers are ready
+		int32 VolumeCount = 0;
+		for (TActorIterator<AWorldDataVolume> It(GetWorld()); It; ++It)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Triggering PopulateLayers on Volume: %s"), *It->GetName());
+			It->PopulateLayers();
+			VolumeCount++;
+		}
+		if (VolumeCount == 0)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] No AWorldDataVolume found to populate layers for."));
 		}
 
 		switch (CombinedMode)
@@ -304,25 +232,25 @@ void AWorldLayersDebugActor::HandleDebugInput()
 			Set3DMode(EWorldLayers3DMode::None);
 			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: None"));
 			break;
-		case 1: // UI MiniMap
-			if (DebugWidgetInstance) DebugWidgetInstance->SetDebugMode(EWorldLayersDebugMode::MiniMap);
-			Set3DMode(EWorldLayers3DMode::None);
-			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: UI MiniMap"));
-			break;
-		case 2: // 3D Decal
-			if (DebugWidgetInstance) DebugWidgetInstance->SetDebugMode(EWorldLayersDebugMode::Hidden);
-			Set3DMode(EWorldLayers3DMode::Decal);
-			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: 3D Decal"));
-			break;
-		case 3: // 3D Small Plane
+		case 1: // 3D Small Plane
 			if (DebugWidgetInstance) DebugWidgetInstance->SetDebugMode(EWorldLayersDebugMode::Hidden);
 			Set3DMode(EWorldLayers3DMode::SmallPlane);
 			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: 3D Small Plane"));
 			break;
-		case 4: // 3D World sized Plane
+		case 2: // 3D World sized Plane
 			if (DebugWidgetInstance) DebugWidgetInstance->SetDebugMode(EWorldLayersDebugMode::Hidden);
 			Set3DMode(EWorldLayers3DMode::WorldPlane);
 			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: World sized Plane"));
+			break;
+		case 3: // 3D Decal
+			if (DebugWidgetInstance) DebugWidgetInstance->SetDebugMode(EWorldLayersDebugMode::Hidden);
+			Set3DMode(EWorldLayers3DMode::Decal);
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: 3D Decal"));
+			break;
+		case 4: // UI MiniMap
+			if (DebugWidgetInstance) DebugWidgetInstance->SetDebugMode(EWorldLayersDebugMode::MiniMap);
+			Set3DMode(EWorldLayers3DMode::None);
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Now showing: UI MiniMap"));
 			break;
 		}
 	}
@@ -343,7 +271,7 @@ void AWorldLayersDebugActor::HandleDebugInput()
 		bool bKeyDown = IsKeyDown(NumKeys[i]);
 		if (bKeyDown && !bLastNumPadKeysDown[i])
 		{
-			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] HandleDebugInput: NumPad %d Detected. Selecting Layer %d."), i, i-1);
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] HandleDebugInput [Actor:%p]: NumPad %d Detected. Selecting Layer %d."), this, i, i-1);
 			NewSelectedLayer = i - 1;
 			bAnyDebugKeyPressed = true;
 		}
@@ -351,30 +279,27 @@ void AWorldLayersDebugActor::HandleDebugInput()
 	}
 
 	// FULL AUTO-REFRESH LOGIC
-	if (bAnyDebugKeyPressed)
+	if (bAnyDebugKeyPressed && Subsystem)
 	{
-		if (UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this))
+		// 1. Update selection if needed
+		if (NewSelectedLayer != -1)
 		{
-			// 1. Update selection if needed
-			if (NewSelectedLayer != -1)
-			{
-				SelectedLayerIndex = NewSelectedLayer;
-				if (DebugWidgetInstance) DebugWidgetInstance->SetSelectedLayer(SelectedLayerIndex);
-			}
-
-			// 2. Force Subsystem & Volume Refresh
-			for (TActorIterator<AWorldDataVolume> It(GetWorld()); It; ++It)
-			{
-				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Auto-Refreshing Volume: %s"), *It->GetName());
-				It->PopulateLayers(); // PopulateLayers now handles the ownership/reset check internally
-			}
-
-			// 3. Update the UI names (critical since PopulateLayers might have changed the layer list)
-			UpdateDebugWidget();
-
-			// 4. Notify anyone else interested
-			Subsystem->OnRequestUpdate.Broadcast();
+			SelectedLayerIndex = NewSelectedLayer;
+			if (DebugWidgetInstance) DebugWidgetInstance->SetSelectedLayer(SelectedLayerIndex);
 		}
+
+		// 2. Force Subsystem & Volume Refresh
+		for (TActorIterator<AWorldDataVolume> It(GetWorld()); It; ++It)
+		{
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Auto-Refreshing Volume: %s"), *It->GetName());
+			It->PopulateLayers(); // PopulateLayers now handles the ownership/reset check internally
+		}
+
+		// 3. Update the UI names (critical since PopulateLayers might have changed the layer list)
+		UpdateDebugWidget();
+
+		// 4. Notify anyone else interested
+		Subsystem->OnRequestUpdate.Broadcast();
 	}
 }
 
@@ -502,7 +427,21 @@ void AWorldLayersDebugActor::RefreshLayerNames()
 	if (UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this))
 	{
 		TArray<FName> NewNames = Subsystem->GetActiveLayerNames();
-		if (NewNames.Num() != LayerNames.Num())
+		
+		bool bNamesChanged = (NewNames.Num() != LayerNames.Num());
+		if (!bNamesChanged)
+		{
+			for (int32 i = 0; i < NewNames.Num(); ++i)
+			{
+				if (NewNames[i] != LayerNames[i])
+				{
+					bNamesChanged = true;
+					break;
+				}
+			}
+		}
+
+		if (bNamesChanged)
 		{
 			LayerNames = NewNames;
 			UpdateDebugWidget();
@@ -546,27 +485,39 @@ void AWorldLayersDebugActor::Update3DVisualization()
 		if (!DataLayer) return;
 
 		// --- OPTIMIZATION START ---
-		static FName LastLayerName;
-		static EWorldLayers3DMode LastLoggedMode = EWorldLayers3DMode::None;
 		
-		// We only want to update the RenderTarget and apply parameters if something CHANGED
-		// or if the data is DIRTY (meaning it was updated on CPU and needs to be pushed to GPU)
 		const bool bLayerChanged = (LastLayerName != TargetLayerName);
 		const bool bModeChanged = (LastLoggedMode != Current3DMode);
 		const bool bDataDirty = DataLayer->bIsDirty;
 
-		if (bLayerChanged || bModeChanged || bDataDirty)
+		static int32 ForceUpdateFrames = 0;
+		if (bLayerChanged || bModeChanged)
 		{
+			ForceUpdateFrames = 2; // Update for 2 frames to ensure RT is ready and MID binds correctly
+		}
+
+		if (bLayerChanged || bModeChanged || bDataDirty || ForceUpdateFrames > 0)
+		{
+			if (ForceUpdateFrames > 0) ForceUpdateFrames--;
+
+			UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Update3D [Actor:%p]: Layer='%s' (Changed:%s), Mode=%d (Changed:%s), Dirty=%s, ForceRemaining=%d"), 
+				this, *TargetLayerName.ToString(), bLayerChanged ? TEXT("Yes") : TEXT("No"), 
+				(int32)Current3DMode, bModeChanged ? TEXT("Yes") : TEXT("No"), 
+				bDataDirty ? TEXT("Yes") : TEXT("No"), ForceUpdateFrames);
+
 			// Use Render Target if available
 			if (DebugRenderTargetInstance)
 			{
-				Subsystem->UpdateDebugRenderTarget(TargetLayerName, DebugRenderTargetInstance);
+				bool bResize = (DebugRenderTargetInstance->SizeX != DataLayer->Resolution.X || DebugRenderTargetInstance->SizeY != DataLayer->Resolution.Y);
+				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Update3D: Updating RT '%s' (Res:%dx%d, NeedsResize:%s)"), 
+					*DebugRenderTargetInstance->GetName(), DataLayer->Resolution.X, DataLayer->Resolution.Y, bResize ? TEXT("Yes") : TEXT("No"));
 				
-				// Clear the dirty flag so we don't update every frame if nothing changed on CPU
-				// Note: We use const_cast because GetDataLayer returns const pointer but we need to clear the flag
-				UWorldDataLayer* MutableLayer = const_cast<UWorldDataLayer*>(DataLayer);
-				MutableLayer->bIsDirty = false;
+				Subsystem->UpdateDebugRenderTarget(TargetLayerName, DebugRenderTargetInstance);
 			}
+
+			// Clear the dirty flag
+			UWorldDataLayer* MutableLayer = const_cast<UWorldDataLayer*>(DataLayer);
+			MutableLayer->bIsDirty = false;
 
 			// Fallback/Legacy: Still get Tex for logging and potential override
 			UTexture* Tex = Subsystem->GetLayerGpuTexture(TargetLayerName);
@@ -581,59 +532,20 @@ void AWorldLayersDebugActor::Update3DVisualization()
 
 			if (FinalTex)
 			{
-				// Apply to the active MID
-				TargetMID->SetTextureParameterValue(TEXT("Texture"), FinalTex);
-				TargetMID->SetTextureParameterValue(TEXT("Diffuse"), FinalTex);
-				TargetMID->SetTextureParameterValue(TEXT("BaseColor"), FinalTex);
-				
-				UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] 3D Viz: Applied Layer '%s' (Dirty: %s) to MID '%s' (Mode: %d)"), 
-					*TargetLayerName.ToString(), bDataDirty ? TEXT("True") : TEXT("False"), 
-					*TargetMID->GetName(), (int32)Current3DMode);
-
-				if (Current3DMode == EWorldLayers3DMode::WorldPlane && (bLayerChanged || bModeChanged))
+				if (TargetMID)
 				{
-					// --- DIAGNOSTIC SAMPLING START ---
-					UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] DIAG: Layer Res: %dx%d"), DataLayer->Resolution.X, DataLayer->Resolution.Y);
-					FIntPoint Corners[] = { 
-						{0, 0}, 
-						{DataLayer->Resolution.X - 1, 0}, 
-						{0, DataLayer->Resolution.Y - 1}, 
-						{DataLayer->Resolution.X - 1, DataLayer->Resolution.Y - 1} 
-					};
-					for (int32 i = 0; i < 4; ++i)
-					{
-						FLinearColor V = DataLayer->GetValueAtPixel(Corners[i]);
-						UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] DIAG: Layer Corner %d (%d, %d) = %s"), i, Corners[i].X, Corners[i].Y, *V.ToString());
-					}
-
-					UTexture2D* Tex2D = Cast<UTexture2D>(Tex);
-					if (Tex2D && Tex2D->GetPlatformData() && Tex2D->GetPlatformData()->Mips.Num() > 0)
-					{
-						const void* RawDataPtr = Tex2D->GetPlatformData()->Mips[0].BulkData.LockReadOnly();
-						if (RawDataPtr)
-						{
-							int32 TW = Tex2D->GetSizeX();
-							int32 TH = Tex2D->GetSizeY();
-							EPixelFormat PF = Tex2D->GetPixelFormat();
-							if (PF == PF_B8G8R8A8)
-							{
-								const FColor* ColorData = static_cast<const FColor*>(RawDataPtr);
-								// Export to PNG
-								TArray64<uint8> CompressedData;
-								FImageView ImageView(ColorData, TW, TH);
-								if (FImageUtils::CompressImage(CompressedData, TEXT("png"), ImageView))
-								{
-									FString Path = FPaths::ProjectSavedDir() / TEXT("Debug_WorldLayer.png");
-									if (FFileHelper::SaveArrayToFile(CompressedData, *Path))
-									{
-										UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] DIAG: Exported texture to %s"), *Path);
-									}
-								}
-							}
-							Tex2D->GetPlatformData()->Mips[0].BulkData.Unlock();
-						}
-					}
-					// --- DIAGNOSTIC SAMPLING END ---
+					TargetMID->SetTextureParameterValue(TEXT("Texture"), FinalTex);
+					TargetMID->SetTextureParameterValue(TEXT("Diffuse"), FinalTex);
+					TargetMID->SetTextureParameterValue(TEXT("BaseColor"), FinalTex);
+					
+					UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] 3D Viz [Actor:%p]: Applied Texture '%s' [Res:%s] to MID '%s'"), 
+						this, *FinalTex->GetName(), 
+						FinalTex->GetResource() ? *FString::Printf(TEXT("%dx%d"), FinalTex->GetResource()->GetSizeX(), FinalTex->GetResource()->GetSizeY()) : TEXT("NoResource"),
+						*TargetMID->GetName());
+				}
+				else
+				{
+					UE_LOG(LogTemp, Error, TEXT("[RancWorldLayers] Update3D: TargetMID is NULL for mode %d"), (int32)Current3DMode);
 				}
 			}
 

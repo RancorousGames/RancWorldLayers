@@ -74,6 +74,7 @@ void UWorldLayersDebugWidget::RefreshLayerNames()
 {
 	if (!LayerComboBox) return;
 
+	FString CurrentSelection = LayerComboBox->GetSelectedOption();
 	LayerComboBox->ClearOptions();
 
 	UWorldLayersSubsystem* Subsystem = UWorldLayersSubsystem::Get(this);
@@ -89,7 +90,14 @@ void UWorldLayersDebugWidget::RefreshLayerNames()
 
 	if (LayerComboBox->GetOptionCount() > 0)
 	{
-		LayerComboBox->SetSelectedIndex(0);
+		if (CurrentSelection != TEXT("") && LayerComboBox->FindOptionIndex(CurrentSelection) != INDEX_NONE)
+		{
+			LayerComboBox->SetSelectedOption(CurrentSelection);
+		}
+		else
+		{
+			LayerComboBox->SetSelectedIndex(0);
+		}
 		UpdateDebugTexture();
 	}
 }

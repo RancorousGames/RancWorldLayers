@@ -88,6 +88,15 @@ private:
 
 	TArray<FName> LayerNames;
 
+	// Input and state tracking
+	int32 CombinedMode = 0;
+	bool bLastNumPad0Down = false;
+	bool bLastNumPadKeysDown[10];
+
+	// Optimization tracking for 3D visualization
+	FName LastLayerName;
+	EWorldLayers3DMode LastLoggedMode = EWorldLayers3DMode::None;
+
 	void HandleDebugInput();
 	void PositionActor();
 	void Update3DVisualization();

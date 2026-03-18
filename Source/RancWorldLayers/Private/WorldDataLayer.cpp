@@ -264,8 +264,6 @@ void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinea
 			break;
 	}
 
-	bIsDirty = true;
-
 	// --- Update Spatial Indices with Format-Aware Comparison ---
 	if (bShouldUpdateIndex)
 	{
@@ -313,6 +311,11 @@ void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinea
 				break;
 			}
 		}
+	}
+
+	if (!bIsInitializing)
+	{
+		bIsDirty = true;
 	}
 }
 

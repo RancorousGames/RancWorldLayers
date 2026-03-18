@@ -109,6 +109,9 @@ public:
 	FVector2D GetWorldGridOrigin() const { return WorldGridOrigin; }
 	FVector2D GetWorldGridSize() const { return WorldGridSize; }
 
+	/** Returns true if the given key is currently pressed (tracked via global input processor). */
+	bool IsKeyDown(FKey Key) const;
+
 private:
 	UPROPERTY()
 	TMap<FName, UWorldDataLayer*> WorldDataLayers;
@@ -123,6 +126,8 @@ private:
 	FVector2D WorldGridSize;
 
 	FTSTicker::FDelegateHandle TickHandle;
+
+	TSharedPtr<class FWorldLayersInputProcessor> InputProcessor;
 
 	void SyncCPUToGPU(UWorldDataLayer* DataLayer);
 	void ReadbackTexture(UWorldDataLayer* DataLayer);
