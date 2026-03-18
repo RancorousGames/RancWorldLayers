@@ -75,7 +75,12 @@ void UWorldDataLayer::Reinitialize(const FVector2D& InWorldGridSize)
 						{
 							const FColor* FormattedData = reinterpret_cast<const FColor*>(OutRawData.GetData());
 							FColor RawColor = FormattedData[TexY * TexWidth + TexX];
-							PixelColor = FLinearColor::FromSRGBColor(RawColor);
+							
+							// Manual conversion to avoid FLinearColor(FColor) sRGB lookup table
+							PixelColor.R = RawColor.R / 255.0f;
+							PixelColor.G = RawColor.G / 255.0f;
+							PixelColor.B = RawColor.B / 255.0f;
+							PixelColor.A = RawColor.A / 255.0f;
 						}
 						else if (SourceFormat == TSF_G8)
 						{
@@ -120,7 +125,11 @@ void UWorldDataLayer::Reinitialize(const FVector2D& InWorldGridSize)
 							if (PixelFormat == PF_B8G8R8A8)
 							{
 								const FColor* FormattedData = static_cast<const FColor*>(RawTextureData);
-								PixelColor = FLinearColor::FromSRGBColor(FormattedData[TexY * PWidth + TexX]);
+								FColor RawColor = FormattedData[TexY * PWidth + TexX];
+								PixelColor.R = RawColor.R / 255.0f;
+								PixelColor.G = RawColor.G / 255.0f;
+								PixelColor.B = RawColor.B / 255.0f;
+								PixelColor.A = RawColor.A / 255.0f;
 							}
 							else if (PixelFormat == PF_G8)
 							{
@@ -218,10 +227,6 @@ FLinearColor UWorldDataLayer::GetValueAtPixel(const FIntPoint& PixelCoords) cons
 
 	return Result;
 }
-
-// Source/RancWorldLayers/Private/WorldDataLayer.cpp
-
-// Source/RancWorldLayers/Private/WorldDataLayer.cpp
 
 void UWorldDataLayer::SetValueAtPixel(const FIntPoint& PixelCoords, const FLinearColor& NewValue)
 {
