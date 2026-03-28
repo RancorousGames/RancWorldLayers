@@ -47,6 +47,7 @@ public class RancWorldLayers : ModuleRules
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("LevelEditor");
+			PrivateDependencyModuleNames.Add("UnrealEd");
 		}
 		
 		DynamicallyLoadedModuleNames.AddRange(

@@ -109,6 +109,9 @@ public:
 	FVector2D GetWorldGridOrigin() const { return WorldGridOrigin; }
 	FVector2D GetWorldGridSize() const { return WorldGridSize; }
 
+	/** Updates the global Material Parameter Collection with the current volume bounds. */
+	void UpdateGlobalMaterialParameters();
+
 	/** Returns true if the given key is currently pressed (tracked via global input processor). */
 	bool IsKeyDown(FKey Key) const;
 
@@ -121,6 +124,10 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<AWorldLayersDebugActor> DebugActor;
+
+	/** The global MPC instance used to pass world bounds to shaders. */
+	UPROPERTY()
+	TObjectPtr<class UMaterialParameterCollectionInstance> GlobalMPCInstance;
 
 	FVector2D WorldGridOrigin;
 	FVector2D WorldGridSize;

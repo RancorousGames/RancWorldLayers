@@ -13,6 +13,8 @@
 #include "WorldLayersDebugWidget.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
 
 /** Global input processor to catch keys in the Editor even without focus/PIE. Managed by the Subsystem. */
 class FWorldLayersInputProcessor : public IInputProcessor
@@ -91,6 +93,40 @@ void UWorldLayersSubsystem::InitializeFromVolume(AWorldDataVolume* Volume)
 	}
 
 	SpawnDebugActor();
+	UpdateGlobalMaterialParameters();
+}
+
+void UWorldLayersSubsystem::UpdateGlobalMaterialParameters()
+{
+	if (!WorldDataVolume.IsValid()) return;
+
+	// Load the MPC asset. 
+	// Try both Project and Plugin paths
+	UMaterialParameterCollection* MPC = Cast<UMaterialParameterCollection>(StaticLoadObject(UMaterialParameterCollection::StaticClass(), nullptr, TEXT("/Game/RancWorldLayers/MPC_WorldLayers")));
+	if (!MPC)
+	{
+		MPC = Cast<UMaterialParameterCollection>(StaticLoadObject(UMaterialParameterCollection::StaticClass(), nullptr, TEXT("/RancWorldLayers/MPC_WorldLayers")));
+	}
+	
+	if (!MPC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[RancWorldLayers] UpdateGlobalMaterialParameters: Could not find MPC_WorldLayers at /RancWorldLayers/MPC_WorldLayers. Global shader math will be incorrect."));
+		return;
+	}
+
+	if (!GlobalMPCInstance)
+	{
+		GlobalMPCInstance = GetWorld()->GetParameterCollectionInstance(MPC);
+	}
+
+	if (GlobalMPCInstance)
+	{
+		// Push the 2D Origin and Size to the MPC
+		GlobalMPCInstance->SetVectorParameterValue(TEXT("WL_Origin"), FLinearColor(WorldGridOrigin.X, WorldGridOrigin.Y, 0.0f, 0.0f));
+		GlobalMPCInstance->SetVectorParameterValue(TEXT("WL_Size"), FLinearColor(WorldGridSize.X, WorldGridSize.Y, 0.0f, 0.0f));
+		
+		UE_LOG(LogTemp, Log, TEXT("[RancWorldLayers] Updated Global Material Parameters: Origin=%s, Size=%s"), *WorldGridOrigin.ToString(), *WorldGridSize.ToString());
+	}
 }
 
 void UWorldLayersSubsystem::SpawnDebugActor()
@@ -289,8 +325,20 @@ bool UWorldLayersSubsystem::Tick(float DeltaTime)
 
 UWorldLayersSubsystem* UWorldLayersSubsystem::Get(const UObject* WorldContext)
 {
-	if (!WorldContext) return nullptr;
-	UWorld* World = WorldContext->GetWorld();
+	UWorld* World = nullptr;
+	if (WorldContext)
+	{
+		World = WorldContext->GetWorld();
+	}
+
+#if WITH_EDITOR
+	if (!World && GEditor)
+	{
+		// Fallback to the current editor world context (e.g. for Material Previews)
+		World = GEditor->GetEditorWorldContext().World();
+	}
+#endif
+
 	if (!World) return nullptr;
 	return World->GetSubsystem<UWorldLayersSubsystem>();
 }
