@@ -54,6 +54,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data|Test")
 	bool bOverwriteTestLayer = false;
 
+	/** If true, a debug actor will be spawned which can be used to visualize the world layers using ctrl-0-9 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data|Test")
+	bool bSpawnWorldLayersDebugActor = true;
+
+	
 	/** The relative height at which the small debug plane is spawned. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "World Data|Debug")
 	float SmallPlaneSpawnHeight = 1000.0f;

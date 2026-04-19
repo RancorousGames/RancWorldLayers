@@ -92,7 +92,8 @@ void UWorldLayersSubsystem::InitializeFromVolume(AWorldDataVolume* Volume)
 		}
 	}
 
-	SpawnDebugActor();
+	if (Volume->bSpawnWorldLayersDebugActor)
+		SpawnDebugActor();
 	UpdateGlobalMaterialParameters();
 }
 

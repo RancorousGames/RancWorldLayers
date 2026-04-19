@@ -198,10 +198,10 @@ void AWorldLayersDebugActor::HandleDebugInput()
 		// Unified Cycle Logic
 		// States: 
 		// 0: All Hidden
-		// 1: UI MiniMap
-		// 2: 3D Decal
-		// 3: 3D Small Plane
-		// 4: 3D World Plane
+		// 1: 3D Small Plane
+		// 2: 3D World Plane
+		// 3: 3D Decal
+		// 4: UI MiniMap
 
 		CombinedMode = (CombinedMode + 1) % 5;
 
